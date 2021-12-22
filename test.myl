@@ -1,4 +1,8 @@
 
 def main()
-  _printf(50 * 2, "Cool story bro %d")
+  int test = 50
+
+  if test == 100 then
+    _printf("test")
+  end
 end

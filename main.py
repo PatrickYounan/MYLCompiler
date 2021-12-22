@@ -41,13 +41,18 @@ class TokenType(Enum):
     TOKEN_BITWISE_OR = 27
     TOKEN_BITWISE_AND = 28
     TOKEN_NOT = 29
+    TOKEN_INT = 30
 
 
 class Compiler:
 
     def __init__(self):
         self.instructions = []
+        self.stack = []
         self.has_main = False
+
+    def address(self):
+        return len(self.instructions)
 
 
 class Opcode(Enum):
@@ -59,6 +64,13 @@ class Opcode(Enum):
     ADD = 5
     SUB = 6
     MUL = 7
+    STORE = 8
+    LOAD = 9
+    LABEL = 10
+    IF = 11
+    END = 12
+    ELSE = 13
+    CMPEQ = 14
 
 
 class Token:
@@ -104,6 +116,8 @@ class BinaryExpression(Node):
             compiler.instructions.append(Instruction(Opcode.SUB))
         elif self.operator.type == TokenType.TOKEN_STAR:
             compiler.instructions.append(Instruction(Opcode.MUL))
+        elif self.operator.type == TokenType.TOKEN_ISEQ:
+            compiler.instructions.append(Instruction(Opcode.CMPEQ))
 
     def __init__(self, left, right, operator):
         self.left = left
@@ -128,9 +142,51 @@ class LiteralExpression(Node):
             compiler.instructions.append(Instruction(Opcode.PUSH_STR, self.token, self.token.data))
         elif self.token.type == TokenType.TOKEN_DIGIT:
             compiler.instructions.append(Instruction(Opcode.PUSH_INT, self.token, self.token.data))
+        elif self.token.type == TokenType.TOKEN_IDENTIFIER:
+            compiler.instructions.append(Instruction(Opcode.LOAD, self.token, self.token.data))
 
     def __init__(self, token):
         self.token = token
+
+
+class VarDeclStatement(Node):
+
+    def __init__(self, var_type, name, expression):
+        self.var_type = var_type
+        self.name = name
+        self.expression = expression
+
+    def compile(self, compiler):
+        if self.expression is not None:
+            self.expression.compile(compiler)
+            compiler.instructions.append(Instruction(Opcode.STORE, self.var_type, self.name.data))
+
+
+class ElseStatement(Node):
+
+    def __init__(self, block):
+        self.block = block
+
+    def compile(self, compiler):
+        compiler.instructions.append(Instruction(Opcode.ELSE))
+        for statement in self.block:
+            statement.compile(compiler)
+
+
+class IfStatement(Node):
+
+    def __init__(self, condition, then_block):
+        self.condition = condition
+        self.block = then_block
+
+    def compile(self, compiler):
+        self.condition.compile(compiler)
+
+        compiler.instructions.append(Instruction(Opcode.IF))
+
+        for statement in self.block:
+            statement.compile(compiler)
+        compiler.instructions.append(Instruction(Opcode.END))
 
 
 class DefStatement(Node):
@@ -232,6 +288,8 @@ def next_identifier():
         return Token(TokenType.TOKEN_THEN, identifier)
     elif identifier == "end":
         return Token(TokenType.TOKEN_END, identifier)
+    elif identifier == "int":
+        return Token(TokenType.TOKEN_INT, identifier)
 
     return Token(TokenType.TOKEN_IDENTIFIER, identifier)
 
@@ -338,6 +396,29 @@ def parse_def_statement():
     return DefStatement(name, block)
 
 
+def parse_vardecl_statement():
+    var_type = parse_advance()
+    name = parse_advance(TokenType.TOKEN_IDENTIFIER)
+    exp: Node
+    if parse_accept(TokenType.TOKEN_EQ):
+        exp = parse_expression()
+    return VarDeclStatement(var_type, name, exp)
+
+
+def parse_if_statement():
+    parse_advance()
+    condition = parse_expression()
+    parse_advance(TokenType.TOKEN_THEN)
+    then_block = parse_block_statement([TokenType.TOKEN_ELIF, TokenType.TOKEN_ELSE, TokenType.TOKEN_END])
+    return IfStatement(condition, then_block)
+
+
+def parse_else_statement():
+    parse_advance()
+    block = parse_block_statement([TokenType.TOKEN_END])
+    return ElseStatement(block)
+
+
 def parse_statement():
     if not parse_tok or parse_tok.type == TokenType.TOKEN_EOF:
         return None
@@ -345,6 +426,12 @@ def parse_statement():
         return parse_def_statement()
     elif parse_tok.type == TokenType.TOKEN_IDENTIFIER:
         return parse_identifier_statement()
+    elif parse_tok.type == TokenType.TOKEN_INT:
+        return parse_vardecl_statement()
+    elif parse_tok.type == TokenType.TOKEN_IF:
+        return parse_if_statement()
+    elif parse_tok.type == TokenType.TOKEN_ELSE:
+        return parse_else_statement()
     return None
 
 
@@ -503,16 +590,23 @@ if __name__ == '__main__':
     text.append("global _main\n")
     text.append("extern _printf\n")
 
+    stack_pos = 0
+    stack = []
+    localvars = {}
+    constants = 0
+    labels = 0
+
     if compiler.has_main:
         code.append("_main:\n")
         code.append(" call main\n")
-        code.append(" ret\n\n")
+        code.append(" ret\n")
 
-    stack = []
-    constants = 0
+    for addr in range(0, len(compiler.instructions)):
+        instruction = compiler.instructions[addr]
 
-    for instruction in compiler.instructions:
         if instruction.opcode == Opcode.DEF_PROC:
+            localvars.clear()
+            stack_pos = 0
             code.append(instruction.token.data + ":\n")
             code.append(" push rbp\n")
             code.append(" mov rbp, rsp\n")
@@ -530,7 +624,34 @@ if __name__ == '__main__':
             code.append(" sub rdx, rbx\n")
             code.append(" push rdx\n")
         elif instruction.opcode == Opcode.MUL:
-            raise Exception("Math Operating Unsupported.")
+            code.append(" pop rbx\n")
+            code.append(" pop rbx\n")
+            code.append(" mul rcx\n")
+            code.append(" push rcx\n")
+        elif instruction.opcode == Opcode.LOAD:
+            code.append(" mov rdx, [rsp - %d] ; load %s\n" % (localvars[instruction.value], instruction.value))
+            code.append(" push rdx\n")
+        elif instruction.opcode == Opcode.CMPEQ:
+            code.append(" pop rdx\n")
+            code.append(" pop rbx\n")
+            code.append(" cmp rdx, rbx\n")
+            code.append(" jne #\n")
+        elif instruction.opcode == Opcode.LABEL:
+            code.append("L%d:\n" % labels)
+            labels += 1
+        elif instruction.opcode == Opcode.END:
+            code.append("L%d:\n" % labels)
+            labels += 1
+        elif instruction.opcode == Opcode.ELSE:
+            pass
+        elif instruction.opcode == Opcode.IF:
+            code.append("L%d:\n" % labels)
+            labels += 1
+        elif instruction.opcode == Opcode.STORE:
+            stack_pos += 4
+            code.append(" pop rdx\n")
+            code.append(" mov [rsp - %d], rdx ; store %s\n" % (stack_pos, instruction.value))
+            localvars[instruction.value] = stack_pos
         elif instruction.opcode == Opcode.CALL:
             code.append(" call %s\n" % instruction.value)
         elif instruction.opcode == Opcode.PUSH_INT:
@@ -557,6 +678,6 @@ if __name__ == '__main__':
     asm_file.close()
 
     if compiler.has_main:
-        os.system("nasm -fwin32 test.asm | gcc -o test test.obj")
+        os.system("nasm -f win32 test.asm | gcc -o test test.obj")
         os.system("test.exe")
     print("Took %s seconds to compile & run." % (time.time() - start_time))
