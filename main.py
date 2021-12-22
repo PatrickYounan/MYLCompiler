@@ -58,6 +58,7 @@ class Opcode(Enum):
     CALL = 4
     ADD = 5
     SUB = 6
+    MUL = 7
 
 
 class Token:
@@ -101,6 +102,8 @@ class BinaryExpression(Node):
             compiler.instructions.append(Instruction(Opcode.ADD))
         elif self.operator.type == TokenType.TOKEN_DASH:
             compiler.instructions.append(Instruction(Opcode.SUB))
+        elif self.operator.type == TokenType.TOKEN_STAR:
+            compiler.instructions.append(Instruction(Opcode.MUL))
 
     def __init__(self, left, right, operator):
         self.left = left
@@ -171,8 +174,6 @@ def parse_advance(expecting=None):
     parse_tok = next_token()
     if current_tok is None:
         current_tok = parse_tok
-
-    parse_debug()
     return current_tok
 
 
@@ -507,6 +508,7 @@ if __name__ == '__main__':
         code.append(" call main\n")
         code.append(" ret\n\n")
 
+    stack = []
     constants = 0
 
     for instruction in compiler.instructions:
@@ -527,6 +529,8 @@ if __name__ == '__main__':
             code.append(" pop rdx\n")
             code.append(" sub rdx, rbx\n")
             code.append(" push rdx\n")
+        elif instruction.opcode == Opcode.MUL:
+            raise Exception("Math Operating Unsupported.")
         elif instruction.opcode == Opcode.CALL:
             code.append(" call %s\n" % instruction.value)
         elif instruction.opcode == Opcode.PUSH_INT:
@@ -554,5 +558,5 @@ if __name__ == '__main__':
 
     if compiler.has_main:
         os.system("nasm -fwin32 test.asm | gcc -o test test.obj")
-
-    print("Took %s seconds to compile." % (time.time() - start_time))
+        os.system("test.exe")
+    print("Took %s seconds to compile & run." % (time.time() - start_time))
