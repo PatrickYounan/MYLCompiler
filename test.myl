@@ -1,5 +1,4 @@
 
 def main()
-  _printf("Hi")
-  _printf("Hi d")
+  _printf(10, "Cool story bro %d")
 end

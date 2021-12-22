@@ -115,6 +115,8 @@ class LiteralExpression(Node):
     def compile(self, compiler):
         if self.token.type == TokenType.TOKEN_STRING:
             compiler.instructions.append(Instruction(Opcode.PUSH_STR, self.token, self.token.data))
+        elif self.token.type == TokenType.TOKEN_DIGIT:
+            compiler.instructions.append(Instruction(Opcode.PUSH_INT, self.token, self.token.data))
 
     def __init__(self, token):
         self.token = token
@@ -351,6 +353,8 @@ def parse_args_expression():
 
     while not parse_match(TokenType.TOKEN_RIGHT_PAREN):
         args.append(parse_expression())
+        if not parse_match(TokenType.TOKEN_RIGHT_PAREN):
+            parse_advance(TokenType.TOKEN_COMMA)
 
     parse_advance(TokenType.TOKEN_RIGHT_PAREN)
     return args
@@ -498,6 +502,8 @@ if __name__ == '__main__':
             code.append(" ret\n")
         elif instruction.opcode == Opcode.CALL:
             code.append(" call %s\n" % instruction.value)
+        elif instruction.opcode == Opcode.PUSH_INT:
+            code.append(" push %s\n" % instruction.value)
         elif instruction.opcode == Opcode.PUSH_STR:
             if strings.__contains__(instruction.value):
                 string = strings[instruction.value]
