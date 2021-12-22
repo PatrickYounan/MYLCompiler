@@ -7,7 +7,6 @@ file = None
 lex_head = ' '
 lex_peek = ' '
 parse_tok = None
-found_main = False
 
 
 class TokenType(Enum):
@@ -48,6 +47,7 @@ class Compiler:
 
     def __init__(self):
         self.instructions = []
+        self.has_main = False
 
 
 class Opcode(Enum):
@@ -138,8 +138,7 @@ class DefStatement(Node):
 
     def compile(self, compiler):
         if self.name.data == "main":
-            global found_main
-            found_main = True
+            compiler.has_main = True
         compiler.instructions.append(Instruction(Opcode.DEF_PROC, self.name, self.name.data))
         for statement in self.block:
             statement.compile(compiler)
@@ -503,7 +502,7 @@ if __name__ == '__main__':
     text.append("global _main\n")
     text.append("extern _printf\n")
 
-    if found_main:
+    if compiler.has_main:
         code.append("_main:\n")
         code.append(" call main\n")
         code.append(" ret\n\n")
@@ -553,7 +552,7 @@ if __name__ == '__main__':
     write_section(asm_file, code)
     asm_file.close()
 
-    if found_main:
+    if compiler.has_main:
         os.system("nasm -fwin32 test.asm | gcc -o test test.obj")
 
     print("Took %s seconds to compile." % (time.time() - start_time))
