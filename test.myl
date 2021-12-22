@@ -1,4 +1,5 @@
 
 def main()
-
+  _printf("Hi")
+  _printf("Hi d")
 end

@@ -53,7 +53,9 @@ class Compiler:
 class Opcode(Enum):
     DEF_PROC = 0,
     END_PROC = 1,
-    PUSH_INT = 2
+    PUSH_INT = 2,
+    PUSH_STR = 3
+    CALL = 4
 
 
 class Token:
@@ -71,20 +73,26 @@ class Instruction:
         self.value = value
 
 
-class AST(ABC):
+class Node(ABC):
 
     @abstractmethod
     def compile(self, compiler):
         pass
 
 
-class Expression(AST):
-
+class LogicalExpression(Node):
     def compile(self, compiler):
         pass
 
+    def __init__(self, left, right, operator):
+        self.left = left
+        self.right = right
+        self.operator = operator
 
-class LogicalExpression(Expression):
+
+class BinaryExpression(Node):
+    def compile(self, compiler):
+        pass
 
     def __init__(self, left, right, operator):
         self.left = left
@@ -92,34 +100,27 @@ class LogicalExpression(Expression):
         self.operator = operator
 
 
-class BinaryExpression(Expression):
+class UnaryExpression(Node):
 
-    def __init__(self, left, right, operator):
-        self.left = left
-        self.right = right
-        self.operator = operator
-
-
-class UnaryExpression(Expression):
+    def compile(self, compiler):
+        pass
 
     def __init__(self, exp, operator):
         self.exp = exp
         self.operator = operator
 
 
-class LiteralExpression(Expression):
+class LiteralExpression(Node):
+
+    def compile(self, compiler):
+        if self.token.type == TokenType.TOKEN_STRING:
+            compiler.instructions.append(Instruction(Opcode.PUSH_STR, self.token, self.token.data))
 
     def __init__(self, token):
         self.token = token
 
 
-class Statement(AST):
-
-    def compile(self, compiler):
-        pass
-
-
-class DefStatement(Statement):
+class DefStatement(Node):
 
     def __init__(self, name, block):
         self.name = name
@@ -130,7 +131,21 @@ class DefStatement(Statement):
             global found_main
             found_main = True
         compiler.instructions.append(Instruction(Opcode.DEF_PROC, self.name, self.name.data))
+        for statement in self.block:
+            statement.compile(compiler)
         compiler.instructions.append(Instruction(Opcode.END_PROC, self.name, self.name.data))
+
+
+class CallProcStatement(Node):
+
+    def compile(self, compiler):
+        for argument in self.args:
+            argument.compile(compiler)
+        compiler.instructions.append(Instruction(Opcode.CALL, self.name, self.name.data))
+
+    def __init__(self, name, args):
+        self.name = name
+        self.args = args
 
 
 def error(message):
@@ -148,6 +163,13 @@ def parse_advance(expecting=None):
     if current_tok is None:
         current_tok = parse_tok
     return current_tok
+
+
+def parse_accept(t):
+    if parse_tok.type == t:
+        parse_advance()
+        return True
+    return False
 
 
 def parse_match(t):
@@ -183,7 +205,7 @@ def new_token_advance(t, data, advances):
 
 def next_identifier():
     identifier = ""
-    while lex_head.isalnum():
+    while lex_head.isalnum() or lex_head == '_':
         identifier += lex_head
         lex_advance()
     if identifier == "def":
@@ -233,7 +255,7 @@ def next_token():
             return Token(TokenType.TOKEN_EOF, "")
         if lex_head == '"':
             return next_string()
-        elif lex_head.isalpha():
+        elif lex_head.isalpha() or lex_head == '_':
             return next_identifier()
         elif lex_head.isdigit():
             return next_digit()
@@ -305,13 +327,45 @@ def parse_def_statement():
 
 
 def parse_statement():
+    if not parse_tok or parse_tok.type == TokenType.TOKEN_EOF:
+        return None
     if parse_tok.type == TokenType.TOKEN_DEF:
         return parse_def_statement()
+    elif parse_tok.type == TokenType.TOKEN_IDENTIFIER:
+        return parse_identifier_statement()
     return None
 
 
 def parse_literal():
     return LiteralExpression(parse_advance())
+
+
+def parse_args_expression():
+    args = []
+
+    parse_advance(TokenType.TOKEN_LEFT_PAREN)
+
+    if parse_tok.type == TokenType.TOKEN_RIGHT_PAREN:
+        parse_advance()
+        return args
+
+    while not parse_match(TokenType.TOKEN_RIGHT_PAREN):
+        args.append(parse_expression())
+
+    parse_advance(TokenType.TOKEN_RIGHT_PAREN)
+    return args
+
+
+def parse_proc_call_statement(name):
+    args = parse_args_expression()
+    return CallProcStatement(name, args)
+
+
+def parse_identifier_statement():
+    name = parse_advance()
+    if parse_tok.type == TokenType.TOKEN_LEFT_PAREN:
+        return parse_proc_call_statement(name)
+    return None
 
 
 def parse_identifier_literal():
@@ -414,6 +468,9 @@ if __name__ == '__main__':
             break
         node.compile(compiler)
 
+    strings = {}
+
+    data = []
     text = []
     code = []
 
@@ -429,6 +486,8 @@ if __name__ == '__main__':
         code.append(" call main\n")
         code.append(" ret\n\n")
 
+    constants = 0
+
     for instruction in compiler.instructions:
         if instruction.opcode == Opcode.DEF_PROC:
             code.append(instruction.token.data + ":\n")
@@ -437,10 +496,29 @@ if __name__ == '__main__':
         elif instruction.opcode == Opcode.END_PROC:
             code.append(" leave\n")
             code.append(" ret\n")
+        elif instruction.opcode == Opcode.CALL:
+            code.append(" call %s\n" % instruction.value)
+        elif instruction.opcode == Opcode.PUSH_STR:
+            if strings.__contains__(instruction.value):
+                string = strings[instruction.value]
+                code.append(" push %s\n" % string)
+            else:
+                string = "lc%d" % constants
+                strings[instruction.value] = string
+                data.append("%s: db \"%s\", 10, 0\n" % (string, instruction.value))
+                code.append(" push %s\n" % string)
+                constants += 1
+
+    if len(data) > 0:
+        asm_file.write("section .data\n")
+        for t in data:
+            asm_file.write(t)
+    asm_file.write("\n")
 
     for t in text:
         asm_file.write(t)
     asm_file.write("\n")
+
     for t in code:
         asm_file.write(t)
     asm_file.write("\n")
