@@ -51,11 +51,13 @@ class Compiler:
 
 
 class Opcode(Enum):
-    DEF_PROC = 0,
-    END_PROC = 1,
-    PUSH_INT = 2,
+    DEF_PROC = 0
+    END_PROC = 1
+    PUSH_INT = 2
     PUSH_STR = 3
     CALL = 4
+    ADD = 5
+    SUB = 6
 
 
 class Token:
@@ -67,7 +69,7 @@ class Token:
 
 class Instruction:
 
-    def __init__(self, opcode, token, value):
+    def __init__(self, opcode, token=None, value=""):
         self.opcode = opcode
         self.token = token
         self.value = value
@@ -91,8 +93,14 @@ class LogicalExpression(Node):
 
 
 class BinaryExpression(Node):
+
     def compile(self, compiler):
-        pass
+        self.left.compile(compiler)
+        self.right.compile(compiler)
+        if self.operator.type == TokenType.TOKEN_PLUS:
+            compiler.instructions.append(Instruction(Opcode.ADD))
+        elif self.operator.type == TokenType.TOKEN_DASH:
+            compiler.instructions.append(Instruction(Opcode.SUB))
 
     def __init__(self, left, right, operator):
         self.left = left
@@ -140,14 +148,14 @@ class DefStatement(Node):
 
 class CallProcStatement(Node):
 
+    def __init__(self, name, args):
+        self.name = name
+        self.args = args
+
     def compile(self, compiler):
         for argument in self.args:
             argument.compile(compiler)
         compiler.instructions.append(Instruction(Opcode.CALL, self.name, self.name.data))
-
-    def __init__(self, name, args):
-        self.name = name
-        self.args = args
 
 
 def error(message):
@@ -164,6 +172,8 @@ def parse_advance(expecting=None):
     parse_tok = next_token()
     if current_tok is None:
         current_tok = parse_tok
+
+    parse_debug()
     return current_tok
 
 
@@ -458,6 +468,12 @@ def parse_expression():
     return parse_or_expression()
 
 
+def write_section(asm_file, strings):
+    for t in strings:
+        asm_file.write(t)
+    asm_file.write("\n")
+
+
 if __name__ == '__main__':
     start_time = time.time()
 
@@ -474,12 +490,14 @@ if __name__ == '__main__':
 
     strings = {}
 
+    setup = []
     data = []
     text = []
     code = []
 
     asm_file = open("test.asm", "w")
-    asm_file.write("bits 64\n\n")
+
+    setup.append("bits 64\n")
 
     text.append("section .text\n")
     text.append("global _main\n")
@@ -500,6 +518,16 @@ if __name__ == '__main__':
         elif instruction.opcode == Opcode.END_PROC:
             code.append(" leave\n")
             code.append(" ret\n")
+        elif instruction.opcode == Opcode.ADD:
+            code.append(" pop rdx\n")
+            code.append(" pop rbx\n")
+            code.append(" add rdx, rbx\n")
+            code.append(" push rdx\n")
+        elif instruction.opcode == Opcode.SUB:
+            code.append(" pop rbx\n")
+            code.append(" pop rdx\n")
+            code.append(" sub rdx, rbx\n")
+            code.append(" push rdx\n")
         elif instruction.opcode == Opcode.CALL:
             code.append(" call %s\n" % instruction.value)
         elif instruction.opcode == Opcode.PUSH_INT:
@@ -515,20 +543,14 @@ if __name__ == '__main__':
                 code.append(" push %s\n" % string)
                 constants += 1
 
+    write_section(asm_file, setup)
+
     if len(data) > 0:
         asm_file.write("section .data\n")
-        for t in data:
-            asm_file.write(t)
-    asm_file.write("\n")
+        write_section(asm_file, data)
 
-    for t in text:
-        asm_file.write(t)
-    asm_file.write("\n")
-
-    for t in code:
-        asm_file.write(t)
-    asm_file.write("\n")
-
+    write_section(asm_file, text)
+    write_section(asm_file, code)
     asm_file.close()
 
     if found_main:
