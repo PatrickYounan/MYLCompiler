@@ -115,3 +115,12 @@ class CallProcStatement(Node):
         for argument in self.args:
             argument.compile(compiler)
         compiler.instructions.append(Instruction(Opcode.CALL, self.name, self.name.data))
+
+
+class ExternStatement(Node):
+
+    def __init__(self, name):
+        self.name = name
+
+    def compile(self, compiler):
+        compiler.instructions.append(Instruction(Opcode.EXTERN, self.name, self.name.data))

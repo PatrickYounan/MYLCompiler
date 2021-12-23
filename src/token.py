@@ -37,6 +37,7 @@ class TokenType(Enum):
     TOKEN_DOUBLE = 31
     TOKEN_FLOAT = 32
     TOKEN_TYPE_DEFINE = 33
+    TOKEN_EXTERN = 34
 
 
 class Token:

@@ -84,10 +84,17 @@ class SyntaxParser:
         block = self.parse_block_statement([TokenType.TOKEN_END])
         return ElseStatement(block)
 
+    def parse_extern_statement(self):
+        self.parse_advance()
+        including = self.parse_advance(TokenType.TOKEN_IDENTIFIER)
+        return ExternStatement(including)
+
     def parse_statement(self):
         if not self.token or self.token.type == TokenType.TOKEN_EOF:
             return None
-        if self.token.type == TokenType.TOKEN_DEF:
+        if self.token.type == TokenType.TOKEN_EXTERN:
+            return self.parse_extern_statement()
+        elif self.token.type == TokenType.TOKEN_DEF:
             return self.parse_def_statement()
         elif self.token.type == TokenType.TOKEN_IDENTIFIER:
             return self.parse_identifier_statement()

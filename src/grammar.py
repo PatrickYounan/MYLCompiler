@@ -52,6 +52,8 @@ class SyntaxLexer:
             return Token(TokenType.TOKEN_DOUBLE, identifier)
         elif identifier == "float":
             return Token(TokenType.TOKEN_FLOAT, identifier)
+        elif identifier == "extern":
+            return Token(TokenType.TOKEN_EXTERN, identifier)
 
         return Token(TokenType.TOKEN_IDENTIFIER, identifier)
 

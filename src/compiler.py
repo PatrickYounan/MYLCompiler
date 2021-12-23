@@ -4,14 +4,15 @@ import os
 
 
 class Opcode(Enum):
-    START_PROC = 0,
-    END_PROC = 1,
-    MOV_IMMI = 2,
-    MOV_IMMS = 3,
-    STORE_INT = 4,
-    LOAD_CONST = 5,
-    BINARY_OP = 6,
+    START_PROC = 0
+    END_PROC = 1
+    MOV_IMMI = 2
+    MOV_IMMS = 3
+    STORE_INT = 4
+    LOAD_CONST = 5
+    BINARY_OP = 6
     CALL = 7
+    EXTERN = 8
 
 
 class Instruction:
@@ -61,8 +62,7 @@ class Compiler:
         text = [
             "section .text\n",
             "global main\n",
-            "extern printf\n",
-            "extern ExitProcess\n"
+            "extern ExitProcess\n",
         ]
         code = [
             "main:\n",
@@ -88,6 +88,8 @@ class Compiler:
                 code.append(" add rsp, 32\n")
                 code.append(" leave\n")
                 code.append(" ret\n")
+            elif instruction.opcode == Opcode.EXTERN:
+                text.append("extern %s\n" % instruction.value)
             elif instruction.opcode == Opcode.BINARY_OP:
                 b = self.used_registers.pop()
                 a = self.used_registers.pop()
