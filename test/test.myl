@@ -1,6 +1,6 @@
 extern printf
 
 def boot()
-  int age = (100 + 50) - (20 + 40)
+  int age = 100
   printf("%d", age)
 end
