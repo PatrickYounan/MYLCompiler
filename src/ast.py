@@ -29,7 +29,9 @@ class BinaryExpression(Node):
         self.operator = operator
 
     def compile(self, compiler):
-        pass
+        self.left.compile(compiler)
+        self.right.compile(compiler)
+        compiler.instructions.append(Instruction(Opcode.BINARY_OP, self.operator, self.operator.data))
 
 
 class UnaryExpression(Node):
@@ -49,9 +51,9 @@ class LiteralExpression(Node):
 
     def compile(self, compiler):
         if self.token.type == TokenType.TOKEN_DIGIT:
-            compiler.instructions.append(Instruction(Opcode.PUSHI, self.token, self.token.data))
+            compiler.instructions.append(Instruction(Opcode.MOV_IMMI, self.token, self.token.data))
         elif self.token.type == TokenType.TOKEN_STRING:
-            compiler.instructions.append(Instruction(Opcode.PUSHS, self.token, self.token.data))
+            compiler.instructions.append(Instruction(Opcode.MOV_IMMS, self.token, self.token.data))
         elif self.token.type == TokenType.TOKEN_IDENTIFIER:
             compiler.instructions.append(Instruction(Opcode.LOAD_CONST, self.token, self.token.data))
 
@@ -66,7 +68,7 @@ class VarDeclStatement(Node):
     def compile(self, compiler):
         self.expression.compile(compiler)
         if self.var_type.type == TokenType.TOKEN_INT:
-            compiler.instructions.append(Instruction(Opcode.STOREI, self.var_type, self.name.data))
+            compiler.instructions.append(Instruction(Opcode.STORE_INT, self.var_type, self.name.data))
 
 
 class ElseStatement(Node):

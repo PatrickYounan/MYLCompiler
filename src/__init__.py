@@ -17,4 +17,4 @@ parser.parse_advance()
 compiler = Compiler("test/test.asm", parser)
 compiler.compile()
 
-print("Compilation took %s seconds." % (time.time() - start_time))
+print("\nCompilation took %s seconds." % (time.time() - start_time))
