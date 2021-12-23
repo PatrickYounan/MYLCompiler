@@ -21,22 +21,13 @@ class SyntaxParser:
         return current_tok
 
     def parse_accept(self, t):
-        if self.token.type == t:
-            self.parse_advance()
-            return True
-        return False
+        return True and self.parse_advance() if self.token.type == t else False
 
     def parse_match(self, t):
         return self.token.type == t
 
-    def parse_debug(self):
-        print("%s %s" % (self.token.type, self.token.data))
-
     def parse_token_matches(self, types):
-        for t in types:
-            if self.token.type == t:
-                return True
-        return False
+        return self.token.type in types
 
     def parse_block_statement(self, endings):
         statements = []
@@ -62,10 +53,10 @@ class SyntaxParser:
     def parse_vardecl_statement(self):
         var_type = self.parse_advance()
         name = self.parse_advance(TokenType.TOKEN_IDENTIFIER)
-        exp: Node
+        expression = None
         if self.parse_accept(TokenType.TOKEN_EQ):
-            exp = self.parse_expression()
-        return VarDeclStatement(var_type, name, exp)
+            expression = self.parse_expression()
+        return VarDeclStatement(var_type, name, expression)
 
     def parse_if_statement(self):
         self.parse_advance()
