@@ -34,6 +34,9 @@ class TokenType(Enum):
     TOKEN_BITWISE_AND = 28
     TOKEN_NOT = 29
     TOKEN_INT = 30
+    TOKEN_DOUBLE = 31
+    TOKEN_FLOAT = 32
+    TOKEN_TYPE_DEFINE = 33
 
 
 class Token:

@@ -13,7 +13,7 @@ class SyntaxParser:
         current_tok = self.token
 
         if expecting is not None and current_tok.type != expecting:
-            error("Expecting token type %s. Got %s instead." % (expecting.type, current_tok.type))
+            self.error("Expecting token type %s. Got %s instead." % (expecting.type, current_tok.type))
 
         self.token = self.lexer.next_token()
         if current_tok is None:
@@ -48,13 +48,19 @@ class SyntaxParser:
         self.parse_advance()
         name = self.parse_advance(TokenType.TOKEN_IDENTIFIER)
         self.parse_advance(TokenType.TOKEN_LEFT_PAREN)
+        # TODO: function arguments.
         self.parse_advance(TokenType.TOKEN_RIGHT_PAREN)
+
+        def_type = None
+        if self.parse_accept(TokenType.TOKEN_TYPE_DEFINE):
+            def_type = self.parse_advance()
+
         block = self.parse_block_statement([TokenType.TOKEN_END])
         self.parse_advance(TokenType.TOKEN_END)
-        return DefStatement(name, block)
+        return DefStatement(name, block, def_type)
 
     def parse_vardecl_statement(self):
-        var_type = parse_advance()
+        var_type = self.parse_advance()
         name = self.parse_advance(TokenType.TOKEN_IDENTIFIER)
         exp: Node
         if self.parse_accept(TokenType.TOKEN_EQ):
@@ -102,7 +108,7 @@ class SyntaxParser:
         self.parse_advance(TokenType.TOKEN_LEFT_PAREN)
 
         if self.token.type == TokenType.TOKEN_RIGHT_PAREN:
-            parse_advance()
+            self.parse_advance()
             return args
 
         while not self.parse_match(TokenType.TOKEN_RIGHT_PAREN):

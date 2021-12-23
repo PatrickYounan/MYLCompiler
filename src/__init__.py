@@ -6,21 +6,15 @@ from grammar import SyntaxLexer
 from syntax import SyntaxParser
 from compiler import Compiler
 
-if __name__ == '__main__':
-    start_time = time.time()
+start_time = time.time()
 
-    lexer = SyntaxLexer()
-    lexer.lex_file("test/test.myl")
+lexer = SyntaxLexer()
+lexer.lex_file("test/test.myl")
 
-    parser = SyntaxParser(lexer)
-    parser.parse_advance()
+parser = SyntaxParser(lexer)
+parser.parse_advance()
 
-    compiler = Compiler()
+compiler = Compiler("test/test.asm", parser)
+compiler.compile()
 
-    while True:
-        node = parser.parse_statement()
-        if node is None:
-            break
-        node.compile(compiler)
-
-    print("Compilation took %s seconds." % (time.time() - start_time))
+print("Compilation took %s seconds." % (time.time() - start_time))

@@ -1,4 +1,7 @@
 
-def main()
+def boot()
+  test()
+end
 
+def test()
 end

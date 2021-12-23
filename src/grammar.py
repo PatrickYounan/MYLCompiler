@@ -48,6 +48,10 @@ class SyntaxLexer:
             return Token(TokenType.TOKEN_END, identifier)
         elif identifier == "int":
             return Token(TokenType.TOKEN_INT, identifier)
+        elif identifier == "double":
+            return Token(TokenType.TOKEN_DOUBLE, identifier)
+        elif identifier == "float":
+            return Token(TokenType.TOKEN_FLOAT, identifier)
 
         return Token(TokenType.TOKEN_IDENTIFIER, identifier)
 
@@ -78,7 +82,7 @@ class SyntaxLexer:
             if not self.head:
                 return Token(TokenType.TOKEN_EOF, "")
             if self.head == '"':
-                return next_string()
+                return self.next_string()
             elif self.head.isalpha() or self.head == '_':
                 return self.next_identifier()
             elif self.head.isdigit():
@@ -100,23 +104,25 @@ class SyntaxLexer:
             elif self.head == '.':
                 return self.new_token_advance(TokenType.TOKEN_DOT, ".", 1)
             elif self.head == '=':
-                self.lexr_peek()
-                return self.new_token_advance(TokenType.TOKEN_ISEQ, "==", 2) if self.peek == '=' else new_token_advance(TokenType.TOKEN_EQ, "=", 1)
+                self.peek_char()
+                return self.new_token_advance(TokenType.TOKEN_ISEQ, "==", 2) if self.peek == '=' else self.new_token_advance(TokenType.TOKEN_EQ, "=", 1)
             elif self.head == "!":
                 self.peek_char()
-                return new_token_advance(TokenType.TOKEN_ISNEQ, "!=", 2) if self.peek == '=' else new_token_advance(TokenType.TOKEN_NOT, "!", 1)
+                return self.new_token_advance(TokenType.TOKEN_ISNEQ, "!=", 2) if self.peek == '=' else self.new_token_advance(TokenType.TOKEN_NOT, "!", 1)
             elif self.head == '>':
                 self.peek_char()
-                return new_token_advance(TokenType.TOKEN_ISGE, ">=", 2) if self.peek == '=' else new_token_advance(TokenType.TOKEN_ISG, ">", 1)
+                return self.new_token_advance(TokenType.TOKEN_ISGE, ">=", 2) if self.peek == '=' else self.new_token_advance(TokenType.TOKEN_ISG, ">", 1)
             elif self.head == '<':
                 self.peek_char()
-                return new_token_advance(TokenType.TOKEN_ISLE, "<=", 2) if self.peek == '=' else new_token_advance(TokenType.TOKEN_ISL, "<", 1)
+                return self.new_token_advance(TokenType.TOKEN_ISLE, "<=", 2) if self.peek == '=' else self.new_token_advance(TokenType.TOKEN_ISL, "<", 1)
             elif self.head == '|':
                 self.peek_char()
-                return new_token_advance(TokenType.TOKEN_OR, "||", 2) if self.peek == '|' else new_token_advance(TokenType.TOKEN_BITWISE_OR, "|", 1)
+                return self.new_token_advance(TokenType.TOKEN_OR, "||", 2) if self.peek == '|' else self.new_token_advance(TokenType.TOKEN_BITWISE_OR, "|", 1)
             elif self.head == '&':
                 self.peek_char()
-                return new_token_advance(TokenType.TOKEN_AND, "&&", 2) if self.peek == '&' else new_token_advance(TokenType.TOKEN_BITWISE_AND, "&", 1)
+                return self.new_token_advance(TokenType.TOKEN_AND, "&&", 2) if self.peek == '&' else self.new_token_advance(TokenType.TOKEN_BITWISE_AND, "&", 1)
+            elif self.head == ':':
+                return self.new_token_advance(TokenType.TOKEN_TYPE_DEFINE, ":", 1)
             else:
                 self.lex_advance()
 
