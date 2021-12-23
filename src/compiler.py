@@ -44,6 +44,10 @@ class Compiler:
         self.used_registers.append(register)
         return register
 
+    def compile_bin_op(self, a, b):
+        self.used_registers.append(a)
+        self.registers.append(b)
+
     def compile(self):
         while True:
             node = self.parser.parse_statement()
@@ -65,6 +69,7 @@ class Compiler:
             " call boot\n"
             " call ExitProcess\n"
         ]
+
         data = []
 
         strings = {}
@@ -88,14 +93,10 @@ class Compiler:
                 a = self.used_registers.pop()
                 if instruction.token.type == TokenType.TOKEN_PLUS:
                     code.append(" add %s, %s\n" % (b, a))
-                    self.used_registers.append(b)  # add b when adding.
-                    self.reset_registers()
-                    self.registers.append(a)  # add a to available registers.
+                    self.compile_bin_op(b, a)
                 elif instruction.token.type == TokenType.TOKEN_DASH:
                     code.append(" sub %s, %s\n" % (a, b))
-                    self.used_registers.append(a)  # add a when subtracting.
-                    self.reset_registers()
-                    self.registers.append(b)  # add b to available registers.
+                    self.compile_bin_op(a, b)
             elif instruction.opcode == Opcode.MOV_IMMI:
                 code.append(" mov %s, %s\n" % (self.get_register(), instruction.value))
             elif instruction.opcode == Opcode.STORE_INT:
