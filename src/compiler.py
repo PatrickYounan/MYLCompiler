@@ -13,6 +13,25 @@ class Opcode(Enum):
     BINARY_OP = 6
     CALL = 7
     EXTERN = 8
+    PUSH_ARG = 9
+
+
+class StackValueType(Enum):
+    INT = 0,
+    REF = 1
+
+
+class StackValue:
+    def __init__(self, val_type, value):
+        self.val_type = val_type
+        self.value = value
+        self.ptr = 0
+
+
+class Variable:
+    def __init__(self, ptr, value):
+        self.ptr = ptr
+        self.value = value
 
 
 class Instruction:
@@ -28,8 +47,8 @@ class Compiler:
         self.instructions = []
         self.parser = parser
         self.asm_path = asm_path
+        self.stack = []
         self.registers = ["r9", "r8", "rdx", "rcx"]
-        self.used_registers = []
 
     @staticmethod
     def write_section(file, data):
@@ -39,15 +58,6 @@ class Compiler:
 
     def reset_registers(self):
         self.registers = ["r9", "r8", "rdx", "rcx"]
-
-    def get_register(self):
-        register = self.registers.pop()
-        self.used_registers.append(register)
-        return register
-
-    def compile_bin_op(self, a, b):
-        self.used_registers.append(a)
-        self.registers.append(b)
 
     def compile(self):
         while True:
@@ -84,46 +94,72 @@ class Compiler:
                 code.append(" push rbp\n")
                 code.append(" mov rbp, rsp\n")
                 code.append(" sub rsp, 32\n")
+
             elif instruction.opcode == Opcode.END_PROC:
                 code.append(" add rsp, 32\n")
                 code.append(" leave\n")
                 code.append(" ret\n")
+
             elif instruction.opcode == Opcode.EXTERN:
                 text.append("extern %s\n" % instruction.value)
+
             elif instruction.opcode == Opcode.BINARY_OP:
-                b = self.used_registers.pop()
-                a = self.used_registers.pop()
+                b = self.stack.pop()
+                a = self.stack.pop()
+
                 if instruction.token.type == TokenType.TOKEN_PLUS:
-                    code.append(" add %s, %s\n" % (b, a))
-                    self.compile_bin_op(b, a)
+                    self.stack.append(StackValue(StackValueType.INT, int(a.value) + int(b.value)))
                 elif instruction.token.type == TokenType.TOKEN_DASH:
-                    code.append(" sub %s, %s\n" % (a, b))
-                    self.compile_bin_op(a, b)
+                    self.stack.append(StackValue(StackValueType.INT, int(a.value) - int(b.value)))
+                elif instruction.token.type == TokenType.TOKEN_STAR:
+                    self.stack.append(StackValue(StackValueType.INT, int(a.value) * int(b.value)))
+                elif instruction.token.type == TokenType.TOKEN_SLASH:
+                    self.stack.append(StackValue(StackValueType.INT, int(a.value) / int(b.value)))
+
             elif instruction.opcode == Opcode.MOV_IMMI:
-                code.append(" mov %s, %s\n" % (self.get_register(), instruction.value))
+                self.stack.append(StackValue(StackValueType.INT, instruction.value))
+
             elif instruction.opcode == Opcode.STORE_INT:
                 local_pos += 4
-                local_vars[instruction.value] = local_pos
-                code.append(" mov [rsp - %s], %s\n" % (local_pos, self.used_registers.pop()))
+                variable = Variable(local_pos, 0)
+
+                if self.stack:
+                    stack_value = self.stack.pop()
+                    code.append(" mov dword [rsp - %s], %s\n" % (local_pos, stack_value.value))
+                    variable.value = stack_value.value
+                local_vars[instruction.value] = variable
                 self.reset_registers()
+
             elif instruction.opcode == Opcode.MOV_IMMS:
                 if not strings.__contains__(instruction.value):
                     string_const = "lc%s" % len(strings)
                     strings[instruction.value] = string_const
                     data.append("%s: db `%s`, 0\n" % (string_const, instruction.value))
-                    code.append(" mov %s, %s\n" % (self.get_register(), string_const))
-                else:
-                    string_const = strings[instruction.value]
-                    code.append(" mov %s, %s\n" % (self.get_register(), string_const))
+                    register = self.registers.pop()
+                    code.append(" mov %s, %s\n" % (register, string_const))
+
             elif instruction.opcode == Opcode.LOAD_CONST:
-                code.append(" mov %s, [rsp - %s]\n" % (self.get_register(), local_vars[instruction.value]))
+                const = StackValue(StackValueType.REF, local_vars[instruction.value].value)
+                const.ptr = local_vars[instruction.value].ptr
+                self.stack.append(const)
+
             elif instruction.opcode == Opcode.CALL:
                 code.append(" call %s\n" % instruction.value)
                 self.reset_registers()
 
+            elif instruction.opcode == Opcode.PUSH_ARG:
+                # Only push argument if its on the stack. This will account for numbers.
+                if self.stack:
+                    stack_value = self.stack.pop()
+                    if stack_value.val_type == StackValueType.REF:
+                        code.append(" mov %s, [rsp - %s]\n" % (self.registers.pop(), stack_value.ptr))
+                    else:
+                        code.append(" mov %s, %s\n" % (self.registers.pop(), stack_value.value))
+
         if len(data) > 0:
             file.write("section .data\n")
             self.write_section(file, data)
+
         self.write_section(file, text)
         self.write_section(file, code)
         file.close()

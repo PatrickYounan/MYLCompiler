@@ -112,8 +112,10 @@ class CallProcStatement(Node):
         self.args = args
 
     def compile(self, compiler):
+
         for argument in self.args:
             argument.compile(compiler)
+            compiler.instructions.append(Instruction(Opcode.PUSH_ARG))
         compiler.instructions.append(Instruction(Opcode.CALL, self.name, self.name.data))
 
 
