@@ -66,7 +66,11 @@ class VarDeclStatement(Node):
         self.expression = expression
 
     def compile(self, compiler):
+        # Global variables not implemented yet.
+        if compiler.scope < 0:
+            return
         self.expression.compile(compiler)
+
         if self.var_type.type == TokenType.TOKEN_INT:
             compiler.instructions.append(Instruction(Opcode.STORE_INT, self.var_type, self.name.data))
 
@@ -99,10 +103,12 @@ class DefStatement(Node):
         self.def_type = def_type
 
     def compile(self, compiler):
+        compiler.scope += 1
         compiler.instructions.append(Instruction(Opcode.START_PROC, self.name, self.name.data))
         for statement in self.block:
             statement.compile(compiler)
         compiler.instructions.append(Instruction(Opcode.END_PROC, self.name, self.name.data))
+        compiler.scope -= 1
 
 
 class CallProcStatement(Node):
@@ -112,7 +118,6 @@ class CallProcStatement(Node):
         self.args = args
 
     def compile(self, compiler):
-
         for argument in self.args:
             argument.compile(compiler)
             compiler.instructions.append(Instruction(Opcode.PUSH_ARG))

@@ -52,6 +52,7 @@ class Compiler:
         self.asm_path = asm_path
         self.stack = []
         self.registers = ["r9", "r8", "rdx", "rcx"]
+        self.scope = -1
 
     @staticmethod
     def write_section(file, data):
@@ -86,6 +87,7 @@ class Compiler:
         data = []
 
         strings = {}
+        constants = 0
         local_vars = {}
         local_pos = 0
 
@@ -152,11 +154,12 @@ class Compiler:
 
             elif instruction.opcode == Opcode.MOV_IMMS:
                 if not strings.__contains__(instruction.value):
-                    string_const = "lc%s" % len(strings)
+                    string_const = "lc%s" % constants
                     strings[instruction.value] = string_const
                     data.append("%s: db `%s`, 0\n" % (string_const, instruction.value))
                     register = self.registers.pop()
                     code.append(" mov %s, %s\n" % (register, string_const))
+                    constants += 1
 
             elif instruction.opcode == Opcode.LOAD_CONST:
                 const = StackValue(StackValueType.REF, local_vars[instruction.value].value)
