@@ -154,7 +154,7 @@ class Compiler:
                     if stack_value.val_type == StackValueType.REF:
                         code.append(" mov %s, [rsp - %s]\n" % (self.registers.pop(), stack_value.ptr))
                     else:
-                        code.append(" mov %s, %s\n" % (self.registers.pop(), stack_value.value))
+                        code.append(" mov %s, %s\n" % (self.registers.pop(), int(stack_value.value)))
 
         if len(data) > 0:
             file.write("section .data\n")
