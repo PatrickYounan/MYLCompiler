@@ -4,6 +4,6 @@ def boot()
   int c = 200 - 100
   int i = 100 + 200 + c
   int result = i + c
-  printf("%d", (result + 200) / 2)
+  printf("%d", result)
 end
 
