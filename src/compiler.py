@@ -130,6 +130,8 @@ class Compiler:
                 for variable in marked:
                     var = local_vars[variable]
                     local_pos += 8
+                    code[var.line] = code[var.line].replace("#", "%s" % hex(local_pos))
+
                     for line in var.used_lines:
                         code[line] = code[line].replace("#", "%s" % hex(local_pos))
 
@@ -171,14 +173,11 @@ class Compiler:
             elif instruction.opcode == Opcode.STORE_INT:
                 local_pos += 8
                 variable = Variable(instruction.value, local_pos, 0, len(code))
-                line = 0
                 if self.stack:
                     stack_value = self.stack.pop()
-                    line = len(code)
-                    code.append(" mov dword [rbp - #], %s ; int %s\n" % (hex(stack_value.value), variable.name))
+                    code.append(" mov dword [rbp - #], %s ; int %s\n" % (hex(int(stack_value.value)), variable.name))
                     variable.value = stack_value.value
                 local_vars[instruction.value] = variable
-                local_vars[variable.name].used_lines.append(line)
                 self.reset_registers()
 
             elif instruction.opcode == Opcode.MOV_IMMS:

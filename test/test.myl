@@ -6,7 +6,10 @@ def boot()
   int result = i + c
   printf("%d\n", result + 20)
   printf("%d\n", result)
-  printf("Cool")
+  printf("Cool ")
+
+  int age = 99
+  printf("%d", age)
 end
 
 
