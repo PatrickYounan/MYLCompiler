@@ -38,6 +38,7 @@ class Variable:
         self.value = value
         self.line = line
         self.using = False
+        self.used_lines = []
 
 
 class Function:
@@ -96,6 +97,8 @@ class Compiler:
             " call boot\n"
             " call ExitProcess\n"
         ]
+        stack_alloc_line = 0
+        stack_dealloc_line = 0
         data = []
 
         strings = {}
@@ -127,18 +130,24 @@ class Compiler:
                 for variable in marked:
                     var = local_vars[variable]
                     local_pos += 8
-                    for i in range(0, len(code)):
-                        code[i] = code[i].replace("rbp - %s" % var.ptr, "rbp - %s" % local_pos)
+                    for line in var.used_lines:
+                        code[line] = code[line].replace("#", "%s" % hex(local_pos))
+
+                code[stack_alloc_line] = code[stack_alloc_line].replace("#", "%s" % hex(32 + local_pos))
+                code[stack_dealloc_line] = code[stack_dealloc_line].replace("#", "%s" % hex(32 + local_pos))
+
                 code.append(" leave\n")
                 code.append(" ret\n")
 
             elif instruction.opcode == Opcode.RES_STACK_PTR:
                 function = self.functions[function_name]
-                code.append(" add rsp, %s\n" % hex(40 + function.allocated_bytes))  # Add back shadowspace.
+                stack_dealloc_line = len(code)
+                code.append(" add rsp, #\n")  # Deallocate shadowspace.
 
             elif instruction.opcode == Opcode.ALLOC_BYTES:
                 function = self.functions[function_name]
-                code.append(" sub rsp, %s\n" % hex(40 + function.allocated_bytes))  # Allocate shadowspace.
+                stack_alloc_line = len(code)
+                code.append(" sub rsp, #\n")  # Allocate shadowspace.
 
             elif instruction.opcode == Opcode.EXTERN:
                 text.append("extern %s\n" % instruction.value)
@@ -162,12 +171,14 @@ class Compiler:
             elif instruction.opcode == Opcode.STORE_INT:
                 local_pos += 8
                 variable = Variable(instruction.value, local_pos, 0, len(code))
-
+                line = 0
                 if self.stack:
                     stack_value = self.stack.pop()
-                    code.append(" mov dword [rbp - %s], %s ; int %s\n" % (hex(local_pos), hex(stack_value.value), variable.name))
+                    line = len(code)
+                    code.append(" mov dword [rbp - #], %s ; int %s\n" % (hex(stack_value.value), variable.name))
                     variable.value = stack_value.value
                 local_vars[instruction.value] = variable
+                local_vars[variable.name].used_lines.append(line)
                 self.reset_registers()
 
             elif instruction.opcode == Opcode.MOV_IMMS:
@@ -198,8 +209,9 @@ class Compiler:
                 if self.stack:
                     stack_value = self.stack.pop()
                     if stack_value.val_type == StackValueType.REF:
-                        code.append(" mov %s, [rbp - %s]\n" % (self.registers.pop(), hex(stack_value.ptr)))
                         local_vars[stack_value.name].using = True
+                        local_vars[stack_value.name].used_lines.append(len(code))
+                        code.append(" mov %s, [rbp - #]\n" % (self.registers.pop()))
                     else:
                         code.append(" mov %s, %s\n" % (self.registers.pop(), hex(int(stack_value.value))))
 
