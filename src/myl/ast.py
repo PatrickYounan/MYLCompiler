@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
-from compiler import *
-from token import TokenType, Token
+from src.myl.compiler import *
+from src.myl.token import TokenType
 
 
 class Node(ABC):

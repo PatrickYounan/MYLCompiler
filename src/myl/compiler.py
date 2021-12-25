@@ -1,6 +1,5 @@
-from token import TokenType, Token
+from src.myl.token import TokenType
 from enum import Enum
-import os
 
 
 class Opcode(Enum):
@@ -209,8 +208,3 @@ class Compiler:
         self.write_section(file, text)
         self.write_section(file, code)
         file.close()
-
-        obj_path = self.asm_path.replace(".asm", ".obj")
-
-        os.system("nasm -fwin64 %s | gcc -o program %s" % (self.asm_path, obj_path))
-        os.system("program")

@@ -1,10 +1,10 @@
-from token import TokenType, Token
+from src.myl.token import TokenType, Token
 
 
-class SyntaxLexer:
+class Lexer:
 
-    def __init__(self):
-        self.file = None
+    def __init__(self, path):
+        self.file = open(path, "rb")
         self.head = ' '
         self.peek = ' '
 
@@ -127,6 +127,3 @@ class SyntaxLexer:
                 return self.new_token_advance(TokenType.TOKEN_TYPE_DEFINE, ":", 1)
             else:
                 self.lex_advance()
-
-    def lex_file(self, path):
-        self.file = open(path, "rb")

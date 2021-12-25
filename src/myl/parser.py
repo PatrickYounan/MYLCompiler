@@ -1,9 +1,7 @@
-from token import TokenType, Token
-from ast import *
-from grammar import SyntaxLexer
+from src.myl.ast import *
 
 
-class SyntaxParser:
+class Parser:
 
     def __init__(self, lexer):
         self.lexer = lexer
