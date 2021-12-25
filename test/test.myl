@@ -8,7 +8,7 @@ def boot()
   printf("%d\n", result)
   printf("Cool ")
 
-  int age = 99
+  int age = 99 + 600 / 2
   printf("%d", age)
 end
 

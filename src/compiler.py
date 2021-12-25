@@ -121,6 +121,7 @@ class Compiler:
                     local_pos += 8
                     code[var.line] = code[var.line].replace("#", "%s" % hex(local_pos))
 
+                    # Loop the lines that the variable is used at and update them.
                     for line in var.used_lines:
                         code[line] = code[line].replace("#", "%s" % hex(local_pos))
 
@@ -197,7 +198,7 @@ class Compiler:
                     if stack_value.val_type == StackValueType.REF:
                         local_vars[stack_value.name].using = True
                         local_vars[stack_value.name].used_lines.append(len(code))
-                        code.append(" mov %s, [rbp - #]\n" % (self.registers.pop()))
+                        code.append(" mov %s, [rbp - #] ; %s\n" % (self.registers.pop(), local_vars[stack_value.name].name))
                     else:
                         code.append(" mov %s, %s\n" % (self.registers.pop(), hex(int(stack_value.value))))
 
