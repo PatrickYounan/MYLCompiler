@@ -69,9 +69,11 @@ class VarDeclStatement(Node):
         # Global variables not implemented yet.
         if compiler.scope < 0:
             return
+
         self.expression.compile(compiler)
 
         if self.var_type.type == TokenType.TOKEN_INT:
+            compiler.function.allocated_bytes += 8
             compiler.instructions.append(Instruction(Opcode.STORE_INT, self.var_type, self.name.data))
 
 
@@ -103,12 +105,18 @@ class DefStatement(Node):
         self.def_type = def_type
 
     def compile(self, compiler):
+        compiler.function = Function(self.name.data, 0)
         compiler.scope += 1
         compiler.instructions.append(Instruction(Opcode.START_PROC, self.name, self.name.data))
+        compiler.instructions.append(Instruction(Opcode.ALLOC_BYTES))
+
         for statement in self.block:
             statement.compile(compiler)
+        compiler.instructions.append(Instruction(Opcode.RES_STACK_PTR))
         compiler.instructions.append(Instruction(Opcode.END_PROC, self.name, self.name.data))
         compiler.scope -= 1
+        compiler.functions[self.name.data] = compiler.function
+        compiler.function = None
 
 
 class CallProcStatement(Node):

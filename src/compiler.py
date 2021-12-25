@@ -14,6 +14,8 @@ class Opcode(Enum):
     CALL = 7
     EXTERN = 8
     PUSH_ARG = 9
+    ALLOC_BYTES = 10
+    RES_STACK_PTR = 11
 
 
 class StackValueType(Enum):
@@ -30,11 +32,18 @@ class StackValue:
 
 
 class Variable:
-    def __init__(self, ptr, value, line):
+    def __init__(self, name, ptr, value, line):
         self.ptr = ptr
+        self.name = name
         self.value = value
         self.line = line
         self.using = False
+
+
+class Function:
+    def __init__(self, name, allocated_bytes):
+        self.name = name
+        self.allocated_bytes = allocated_bytes
 
 
 class Instruction:
@@ -52,6 +61,8 @@ class Compiler:
         self.asm_path = asm_path
         self.stack = []
         self.registers = ["r9", "r8", "rdx", "rcx"]
+        self.function = None
+        self.functions = {}
         self.scope = -1
 
     @staticmethod
@@ -73,6 +84,8 @@ class Compiler:
         file = open(self.asm_path, "w")
         file.write("bits 64\n")
 
+        function_name = ""
+
         text = [
             "section .text\n",
             "global main\n",
@@ -83,7 +96,6 @@ class Compiler:
             " call boot\n"
             " call ExitProcess\n"
         ]
-
         data = []
 
         strings = {}
@@ -95,32 +107,38 @@ class Compiler:
             if instruction.opcode == Opcode.START_PROC:
                 local_pos = 0
                 local_vars.clear()
+                function_name = instruction.value
                 code.append("%s:\n" % instruction.value)
                 code.append(" push rbp\n")
                 code.append(" mov rbp, rsp\n")
-                code.append(" sub rsp, 32\n")
 
             elif instruction.opcode == Opcode.END_PROC:
                 # This will remove variables that aren't marked as being used by the compiler.
                 local_pos = 0
                 marked = []
 
-                for var_name in local_vars:
-                    var = local_vars[var_name]
+                for variable in local_vars:
+                    var = local_vars[variable]
                     if not var.using:
                         code[var.line] = ""
                     else:
-                        marked.append(var_name)
+                        marked.append(variable)
 
-                for var_name in marked:
-                    var = local_vars[var_name]
-                    local_pos += 4
+                for variable in marked:
+                    var = local_vars[variable]
+                    local_pos += 8
                     for i in range(0, len(code)):
-                        code[i] = code[i].replace("rsp - %s" % var.ptr, "rsp - %s" % local_pos)
-
-                code.append(" add rsp, 32\n")
+                        code[i] = code[i].replace("rbp - %s" % var.ptr, "rbp - %s" % local_pos)
                 code.append(" leave\n")
                 code.append(" ret\n")
+
+            elif instruction.opcode == Opcode.RES_STACK_PTR:
+                function = self.functions[function_name]
+                code.append(" add rsp, %s\n" % hex(40 + function.allocated_bytes))  # Add back shadowspace.
+
+            elif instruction.opcode == Opcode.ALLOC_BYTES:
+                function = self.functions[function_name]
+                code.append(" sub rsp, %s\n" % hex(40 + function.allocated_bytes))  # Allocate shadowspace.
 
             elif instruction.opcode == Opcode.EXTERN:
                 text.append("extern %s\n" % instruction.value)
@@ -142,14 +160,14 @@ class Compiler:
                 self.stack.append(StackValue(StackValueType.INT, instruction.value))
 
             elif instruction.opcode == Opcode.STORE_INT:
-                local_pos += 4
-                var_name = Variable(local_pos, 0, len(code))
+                local_pos += 8
+                variable = Variable(instruction.value, local_pos, 0, len(code))
 
                 if self.stack:
                     stack_value = self.stack.pop()
-                    code.append(" mov dword [rsp - %s], %s\n" % (local_pos, stack_value.value))
-                    var_name.value = stack_value.value
-                local_vars[instruction.value] = var_name
+                    code.append(" mov dword [rbp - %s], %s ; int %s\n" % (hex(local_pos), hex(stack_value.value), variable.name))
+                    variable.value = stack_value.value
+                local_vars[instruction.value] = variable
                 self.reset_registers()
 
             elif instruction.opcode == Opcode.MOV_IMMS:
@@ -160,6 +178,10 @@ class Compiler:
                     register = self.registers.pop()
                     code.append(" mov %s, %s\n" % (register, string_const))
                     constants += 1
+                else:
+                    string_const = strings[instruction.value]
+                    register = self.registers.pop()
+                    code.append(" mov %s, %s\n" % (register, string_const))
 
             elif instruction.opcode == Opcode.LOAD_CONST:
                 const = StackValue(StackValueType.REF, local_vars[instruction.value].value)
@@ -176,10 +198,10 @@ class Compiler:
                 if self.stack:
                     stack_value = self.stack.pop()
                     if stack_value.val_type == StackValueType.REF:
-                        code.append(" mov %s, [rsp - %s]\n" % (self.registers.pop(), stack_value.ptr))
+                        code.append(" mov %s, [rbp - %s]\n" % (self.registers.pop(), hex(stack_value.ptr)))
                         local_vars[stack_value.name].using = True
                     else:
-                        code.append(" mov %s, %s\n" % (self.registers.pop(), int(stack_value.value)))
+                        code.append(" mov %s, %s\n" % (self.registers.pop(), hex(int(stack_value.value))))
 
         if len(data) > 0:
             file.write("section .data\n")

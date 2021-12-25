@@ -4,5 +4,9 @@ def boot()
   int c = 200 - 100
   int i = 100 + 200 + c
   int result = i + c
-  printf("%d", result + 20)
+  printf("%d\n", result + 20)
+  printf("%d\n", result)
+  printf("Cool")
 end
+
+
