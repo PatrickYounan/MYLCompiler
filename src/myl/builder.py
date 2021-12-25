@@ -1,4 +1,5 @@
 import time
+import os
 from src.myl.lexer import Lexer
 from src.myl.parser import Parser
 from src.myl.compiler import *
@@ -20,3 +21,8 @@ def compile_file(path):
     compiled_files[path] = True
     print("%s took %s seconds to compile." % (lexer.file.name, time.time() - start_time))
     return compiler
+
+
+def compile_to_exe(compiler):
+    os.system("nasm -fwin64 %s | gcc -o program %s" % (compiler.asm_path, compiler.asm_path.replace(".asm", ".obj")))
+    os.system("program")
