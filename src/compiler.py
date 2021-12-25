@@ -116,7 +116,7 @@ class Compiler:
                 code.append(" mov rbp, rsp\n")
 
             elif instruction.opcode == Opcode.END_PROC:
-                # This will remove variables that aren't marked as being used by the compiler.
+                # We will now start optimizations on the current function.
                 local_pos = 0
                 marked = []
 
@@ -142,12 +142,10 @@ class Compiler:
                 code.append(" ret\n")
 
             elif instruction.opcode == Opcode.RES_STACK_PTR:
-                function = self.functions[function_name]
                 stack_dealloc_line = len(code)
                 code.append(" add rsp, #\n")  # Deallocate shadowspace.
 
             elif instruction.opcode == Opcode.ALLOC_BYTES:
-                function = self.functions[function_name]
                 stack_alloc_line = len(code)
                 code.append(" sub rsp, #\n")  # Allocate shadowspace.
 
