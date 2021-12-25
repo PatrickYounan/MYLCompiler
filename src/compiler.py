@@ -41,12 +41,6 @@ class Variable:
         self.used_lines = []
 
 
-class Function:
-    def __init__(self, name, allocated_bytes):
-        self.name = name
-        self.allocated_bytes = allocated_bytes
-
-
 class Instruction:
     def __init__(self, opcode, token=None, value=""):
         self.opcode = opcode
@@ -62,8 +56,6 @@ class Compiler:
         self.asm_path = asm_path
         self.stack = []
         self.registers = ["r9", "r8", "rdx", "rcx"]
-        self.function = None
-        self.functions = {}
         self.scope = -1
 
     @staticmethod
@@ -84,8 +76,6 @@ class Compiler:
 
         file = open(self.asm_path, "w")
         file.write("bits 64\n")
-
-        function_name = ""
 
         text = [
             "section .text\n",
@@ -110,7 +100,6 @@ class Compiler:
             if instruction.opcode == Opcode.START_PROC:
                 local_pos = 0
                 local_vars.clear()
-                function_name = instruction.value
                 code.append("%s:\n" % instruction.value)
                 code.append(" push rbp\n")
                 code.append(" mov rbp, rsp\n")
