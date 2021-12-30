@@ -1,4 +1,4 @@
-from src.myl.token import TokenType, Token
+from src.token import TokenType, Token
 
 
 class Lexer:
@@ -54,6 +54,8 @@ class Lexer:
             return Token(TokenType.TOKEN_FLOAT, identifier)
         elif identifier == "extern":
             return Token(TokenType.TOKEN_EXTERN, identifier)
+        elif identifier == "include":
+            return Token(TokenType.TOKEN_INCLUDE, identifier)
 
         return Token(TokenType.TOKEN_IDENTIFIER, identifier)
 

@@ -1,12 +1,22 @@
 extern printf
 
 def boot()
-  int c = 200 - 100
-  int i = 100 + 200 + c
-  int result = i + c
-  printf("%d\n", result + 20)
-  printf("%d\n", result)
-  printf("Cool ")
+  int x = 10
+  int c = 20
+  int f = 60 + 60
+  if x == 10 then
+    printf("Hi\n")
+
+    if c == 20 then
+      printf("c is 30\n")
+
+      if f == 120 then
+        printf("f is 120")
+      end
+    end
+
+    printf("\nhey again\n")
+  end
+
+  printf("fark")
 end
-
-

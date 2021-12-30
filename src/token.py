@@ -1,10 +1,11 @@
+import enum
 from enum import Enum
 
 
-class TokenType(Enum):
-    TOKEN_EOF = -1,
+class TokenType(enum.IntEnum):
+    TOKEN_EOF = -1
     TOKEN_IDENTIFIER = 0
-    TOKEN_DIGIT = 1,
+    TOKEN_DIGIT = 1
     TOKEN_LEFT_PAREN = 2
     TOKEN_RIGHT_PAREN = 3
     TOKEN_STAR = 4
@@ -38,10 +39,11 @@ class TokenType(Enum):
     TOKEN_FLOAT = 32
     TOKEN_TYPE_DEFINE = 33
     TOKEN_EXTERN = 34
+    TOKEN_INCLUDE = 35
 
 
 class Token:
 
     def __init__(self, _type, _data):
-        self.type = _type
+        self.tok_type = _type
         self.data = _data

@@ -1,8 +1,10 @@
-from src.myl.token import TokenType
 from enum import Enum
+from token import *
+
+compiled_files = {}
 
 
-class Opcode(Enum):
+class Opcode(enum.IntEnum):
     START_PROC = 0
     END_PROC = 1
     MOV_IMMI = 2
@@ -10,16 +12,21 @@ class Opcode(Enum):
     STORE_INT = 4
     LOAD_CONST = 5
     BINARY_OP = 6
-    CALL = 7
-    EXTERN = 8
-    PUSH_ARG = 9
-    ALLOC_BYTES = 10
-    RES_STACK_PTR = 11
+    COMPARE_OP = 7
+    CALL = 8
+    EXTERN = 9
+    MOV_TO_REG = 10
+    ALLOC_BYTES = 11
+    RES_STACK_PTR = 12
+    INCLUDE = 13
+    ENDIF = 14
+    LABEL = 15
 
 
-class StackValueType(Enum):
+class StackValueType(enum.IntEnum):
     INT = 0,
-    REF = 1
+    REF = 1,
+    BOOL = 2
 
 
 class StackValue:
@@ -54,6 +61,7 @@ class Compiler:
         self.parser = parser
         self.asm_path = asm_path
         self.stack = []
+        self.branch_stack = []
         self.registers = ["r9", "r8", "rdx", "rcx"]
         self.scope = -1
 
@@ -66,12 +74,37 @@ class Compiler:
     def reset_registers(self):
         self.registers = ["r9", "r8", "rdx", "rcx"]
 
-    def compile(self):
+    def walk_tree(self):
         while True:
             node = self.parser.parse_statement()
             if node is None:
                 break
             node.compile(self)
+
+    def append_cmp_op(self, cmp_op, a, b):
+
+        if cmp_op == TokenType.TOKEN_ISEQ:
+            self.stack.append(StackValue(StackValueType.BOOL, int(a.value) == int(b.value)))
+
+    def append_bin_op(self, bin_op, a, b):
+
+        if bin_op == TokenType.TOKEN_PLUS:
+            self.stack.append(StackValue(StackValueType.INT, int(a.value) + int(b.value)))
+
+        elif bin_op == TokenType.TOKEN_DASH:
+            self.stack.append(StackValue(StackValueType.INT, int(a.value) - int(b.value)))
+
+        elif bin_op == TokenType.TOKEN_STAR:
+            self.stack.append(StackValue(StackValueType.INT, int(a.value) * int(b.value)))
+
+        elif bin_op == TokenType.TOKEN_SLASH:
+            self.stack.append(StackValue(StackValueType.INT, int(a.value) / int(b.value)))
+
+    def compile(self, path):
+
+        if compiled_files.__contains__(path):
+            return
+        self.walk_tree()
 
         file = open(self.asm_path, "w")
         file.write("bits 64\n")
@@ -94,6 +127,7 @@ class Compiler:
         constants = 0
         local_vars = {}
         local_pos = 0
+        labels = 0
 
         for instruction in self.instructions:
             if instruction.opcode == Opcode.START_PROC:
@@ -131,6 +165,7 @@ class Compiler:
                 code.append(" ret\n")
 
             elif instruction.opcode == Opcode.RES_STACK_PTR:
+                code.append("L%s:\n" % labels)
                 stack_dealloc_line = len(code)
                 code.append(" add rsp, #\n")  # Deallocate shadowspace.
 
@@ -141,18 +176,30 @@ class Compiler:
             elif instruction.opcode == Opcode.EXTERN:
                 text.append("extern %s\n" % instruction.value)
 
+            elif instruction.opcode == Opcode.ENDIF:
+                if_ip = self.branch_stack.pop()
+                label = "L%s" % labels
+                code[if_ip] = code[if_ip].replace("#", label)
+
+            elif instruction.opcode == Opcode.COMPARE_OP:
+                code.append(" cmp rcx, rdx\n")
+                label = "L%s" % labels
+                if instruction.token.tok_type == TokenType.TOKEN_ISEQ:
+                    code.append(" je %s\n" % label)
+                self.branch_stack.append(len(code))
+                code.append(" jmp #\n")
+                self.reset_registers()
+
+            elif instruction.opcode == Opcode.LABEL:
+                code.append("L%s:\n" % labels)
+                labels += 1
+
             elif instruction.opcode == Opcode.BINARY_OP:
                 b = self.stack.pop()
                 a = self.stack.pop()
 
-                if instruction.token.type == TokenType.TOKEN_PLUS:
-                    self.stack.append(StackValue(StackValueType.INT, int(a.value) + int(b.value)))
-                elif instruction.token.type == TokenType.TOKEN_DASH:
-                    self.stack.append(StackValue(StackValueType.INT, int(a.value) - int(b.value)))
-                elif instruction.token.type == TokenType.TOKEN_STAR:
-                    self.stack.append(StackValue(StackValueType.INT, int(a.value) * int(b.value)))
-                elif instruction.token.type == TokenType.TOKEN_SLASH:
-                    self.stack.append(StackValue(StackValueType.INT, int(a.value) / int(b.value)))
+                bin_op = instruction.token.tok_type
+                self.append_bin_op(bin_op, a, b)
 
             elif instruction.opcode == Opcode.MOV_IMMI:
                 self.stack.append(StackValue(StackValueType.INT, instruction.value))
@@ -190,7 +237,19 @@ class Compiler:
                 code.append(" call %s\n" % instruction.value)
                 self.reset_registers()
 
-            elif instruction.opcode == Opcode.PUSH_ARG:
+            elif instruction.opcode == Opcode.INCLUDE:
+                if not compiled_files.__contains__("%s.myl" % instruction.value):
+                    include_path = "%s.myl" % instruction.value
+
+                    parser = Parser(Lexer("%s" % include_path))
+                    parser.parse_advance()
+
+                    compiler = Compiler(include_path.replace(".myl", ".asm"), parser)
+                    compiler.compile(include_path)
+
+                data.append("%include \"%s.asm\"" % instruction.value)
+
+            elif instruction.opcode == Opcode.MOV_TO_REG:
                 # Only push argument if its on the stack. This will account for numbers.
                 if self.stack:
                     stack_value = self.stack.pop()
@@ -208,3 +267,5 @@ class Compiler:
         self.write_section(file, text)
         self.write_section(file, code)
         file.close()
+
+        compiled_files[path] = True
