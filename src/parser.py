@@ -117,8 +117,7 @@ class IfStatement(Node):
         compiler.instructions.append(Instruction(Opcode.ENDIF))
         compiler.scope -= 1
 
-        if compiler.scope == 0:
-            compiler.instructions.append(Instruction(Opcode.LABEL))
+        compiler.instructions.append(Instruction(Opcode.LABEL))
 
 
 class DefStatement(Node):

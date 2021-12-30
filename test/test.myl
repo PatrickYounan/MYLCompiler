@@ -10,12 +10,14 @@ def boot()
     if c == 20 then
       printf("c is 30\n")
 
-      if f == 120 then
-        printf("f is 120")
+      if f == 110 then
+        printf("f is 120\n")
       end
+
+      printf("sick\n")
     end
 
-    printf("\nhey again\n")
+    printf("hey again\n")
   end
 
   printf("fark")
