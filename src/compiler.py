@@ -27,7 +27,6 @@ class Opcode(enum.IntEnum):
     SUB = 20
     MUL = 21
     DIV = 22
-    SET_COMPILING_VAR = 23
 
 
 class StackValueType(enum.IntEnum):
@@ -116,6 +115,11 @@ class Compiler:
         bit64 = self.pop_64bit_arg_register()
         return bit64 if required == 64 else bit32
 
+    def mov(self, a, b):
+        if a == b:
+            return
+        self.code.append(" mov %s, %s\n" % (a, b))
+
     def pop_stack(self) -> StackValue:
         stack_value = self.stack.pop()
 
@@ -129,12 +133,10 @@ class Compiler:
             return StackValue(StackValueType.INT32_VAR, "dword [rsp - %s]" % stack_value.value, stack_value.ptr)
         elif stack_value.kind == StackValueType.INT64_VAR:
             return StackValue(StackValueType.INT64_VAR, "qword [rsp - %s]" % stack_value.value, stack_value.ptr)
-        elif stack_value.kind == StackValueType.RETURN_VALUE:
-            return StackValue(StackValueType.RETURN_VALUE, "eax")
 
         return stack_value
 
-    def emit_mov(self, register="eax"):
+    def emit_mov(self, register="?"):
         stack_value = self.pop_stack()
         value = stack_value.value
 
@@ -150,10 +152,10 @@ class Compiler:
             self.code.append(" movzx %s, ax\n" % register)
             return
 
-        elif stack_value.kind == StackValueType.INT32_VAR:
+        elif stack_value.kind == StackValueType.INT32_VAR and register != "eax":
             register = self.pop_register(32)
 
-        elif stack_value.kind == StackValueType.INT64_VAR or stack_value.kind == StackValueType.STRING_CONST:
+        elif (stack_value.kind == StackValueType.INT64_VAR or stack_value.kind == StackValueType.STRING_CONST) and register != "rax":
             register = self.pop_register(64)
 
         self.code.append(" mov %s, %s\n" % (register, value))
@@ -186,26 +188,26 @@ class Compiler:
         self.stack.append(StackValue(StackValueType.INT_CONST, str(int(a.value) + int(b.value))))
 
     def add_i8(self, a, b):
-        self.code.append(" mov ah, %s\n" % a.value)
-        self.code.append(" mov dh, %s\n" % b.value)
+        self.mov("ah", a.value)
+        self.mov("dh", b.value)
         self.code.append(" add ah, dh\n")
         self.stack.append(StackValue(StackValueType.REGISTER8, "ah"))
 
     def add_i16(self, a, b):
-        self.code.append(" mov ax, %s\n" % a.value)
-        self.code.append(" mov dx, %s\n" % b.value)
+        self.mov("ax", a.value)
+        self.mov("dx", b.value)
         self.code.append(" add ax, dx\n")
         self.stack.append(StackValue(StackValueType.REGISTER16, "ax"))
 
     def add_i32(self, a, b):
-        self.code.append(" mov eax, %s\n" % a.value)
-        self.code.append(" mov edx, %s\n" % b.value)
+        self.mov("eax", a.value)
+        self.mov("edx", b.value)
         self.code.append(" add eax, edx\n")
         self.stack.append(StackValue(StackValueType.REGISTER32, "eax"))
 
     def add_i64(self, a, b):
-        self.code.append(" mov rax, %s\n" % a.value)
-        self.code.append(" mov rdx, %s\n" % b.value)
+        self.mov("rax", a.value)
+        self.mov("rdx", b.value)
         self.code.append(" add rax, rdx\n")
         self.stack.append(StackValue(StackValueType.REGISTER64, "rax"))
 
@@ -213,26 +215,26 @@ class Compiler:
         self.stack.append(StackValue(StackValueType.INT_CONST, str(int(a.value) - int(b.value))))
 
     def sub_i8(self, a, b):
-        self.code.append(" mov ah, %s\n" % a.value)
-        self.code.append(" mov dh, %s\n" % b.value)
+        self.mov("ah", a.value)
+        self.mov("dh", b.value)
         self.code.append(" sub ah, dh\n")
         self.stack.append(StackValue(StackValueType.REGISTER8, "ah"))
 
     def sub_i16(self, a, b):
-        self.code.append(" mov ax, %s\n" % a.value)
-        self.code.append(" mov dx, %s\n" % b.value)
+        self.mov("ax", a.value)
+        self.mov("dx", b.value)
         self.code.append(" sub ax, dx\n")
         self.stack.append(StackValue(StackValueType.REGISTER16, "ax"))
 
     def sub_i32(self, a, b):
-        self.code.append(" mov eax, %s\n" % a.value)
-        self.code.append(" mov edx, %s\n" % b.value)
+        self.mov("eax", a.value)
+        self.mov("edx", b.value)
         self.code.append(" sub eax, edx\n")
         self.stack.append(StackValue(StackValueType.REGISTER32, "eax"))
 
     def sub_i64(self, a, b):
-        self.code.append(" mov rax, %s\n" % a.value)
-        self.code.append(" mov rdx, %s\n" % b.value)
+        self.mov("rax", a.value)
+        self.mov("rdx", b.value)
         self.code.append(" sub rax, rdx\n")
         self.stack.append(StackValue(StackValueType.REGISTER64, "rax"))
 
@@ -240,26 +242,26 @@ class Compiler:
         self.stack.append(StackValue(StackValueType.INT_CONST, str(int(a.value) * int(b.value))))
 
     def mul_i8(self, a, b):
-        self.code.append(" mov al, %s\n" % a.value)
-        self.code.append(" mov bl, %s\n" % b.value)
+        self.mov("al", a.value)
+        self.mov("bl", b.value)
         self.code.append(" imul bl\n")
         self.stack.append(StackValue(StackValueType.REGISTER8, "al"))
 
     def mul_i16(self, a, b):
-        self.code.append(" mov ax, %s\n" % a.value)
-        self.code.append(" mov bx, %s\n" % b.value)
+        self.mov("ax", a.value)
+        self.mov("bx", b.value)
         self.code.append(" imul bx\n")
         self.stack.append(StackValue(StackValueType.REGISTER16, "ax"))
 
     def mul_i32(self, a, b):
-        self.code.append(" mov eax, %s\n" % a.value)
-        self.code.append(" mov ebx, %s\n" % b.value)
+        self.mov("eax", a.value)
+        self.mov("ebx", b.value)
         self.code.append(" imul ebx\n")
         self.stack.append(StackValue(StackValueType.REGISTER32, "eax"))
 
     def mul_i64(self, a, b):
-        self.code.append(" mov rax, %s\n" % a.value)
-        self.code.append(" mov rdx, %s\n" % b.value)
+        self.mov("rax", a.value)
+        self.mov("rdx", b.value)
         self.code.append(" imul rdx\n")
         self.stack.append(StackValue(StackValueType.REGISTER64, "rax"))
 
@@ -267,30 +269,30 @@ class Compiler:
         self.stack.append(StackValue(StackValueType.INT_CONST, str(int(a.value) / int(b.value))))
 
     def div_i8(self, a, b):
-        self.code.append(" mov al, %s\n" % a.value)
+        self.mov("al", a.value)
         self.code.append(" cbw\n")
-        self.code.append(" mov bl, %s\n" % b.value)
+        self.mov("bl", b.value)
         self.code.append(" idiv bl\n")
         self.stack.append(StackValue(StackValueType.REGISTER8, "al"))
 
     def div_i16(self, a, b):
-        self.code.append(" mov ax, %s\n" % a.value)
+        self.mov("ax", a.value)
         self.code.append(" cwd\n")
-        self.code.append(" mov bx, %s\n" % b.value)
+        self.mov("bx", b.value)
         self.code.append(" idiv bx\n")
         self.stack.append(StackValue(StackValueType.REGISTER16, "ax"))
 
     def div_i32(self, a, b):
-        self.code.append(" mov eax, %s\n" % a.value)
+        self.mov("eax", a.value)
         self.code.append(" cdq\n")
-        self.code.append(" mov ebx, %s\n" % b.value)
+        self.mov("ebx", b.value)
         self.code.append(" idiv ebx\n")
         self.stack.append(StackValue(StackValueType.REGISTER32, "eax"))
 
     def div_i64(self, a, b):
-        self.code.append(" mov rax, %s\n" % a.value)
+        self.mov("rax", a.value)
         self.code.append(" cdq\n")
-        self.code.append(" mov rbx, %s\n" % b.value)
+        self.mov("rbx", b.value)
         self.code.append(" idiv rbx\n")
         self.stack.append(StackValue(StackValueType.REGISTER64, "rax"))
 
@@ -461,10 +463,6 @@ class Compiler:
                 self.code.append(" mov rbp, rsp\n")
                 self.code.append(" sub rsp, #\n")
 
-            elif instr.opcode == Opcode.SET_COMPILING_VAR:
-                # This will be used in the future for type checking.
-                pass
-
             elif instr.opcode == Opcode.CLOSE_STACK:
                 if self.stack_offset <= 0:
                     for i in range(0, 3):
@@ -472,6 +470,7 @@ class Compiler:
                     continue
                 sub_idx = setup_stack_idx + 2
                 self.code[sub_idx] = self.code[sub_idx].replace("#", "%s" % hex(32 + self.stack_offset))
+                self.code.append(" add rsp, %s\n" % hex(32 + self.stack_offset))
                 self.code.append(" leave\n")
 
             elif instr.opcode == Opcode.MOV_INT_CONST:
@@ -508,6 +507,7 @@ class Compiler:
                 if self.stack:
                     if function.kind is None:
                         self.error("Function has no returning value.")
+                    print(self.stack)
                     if function.kind == TokenType.TOKEN_INT64:
                         self.emit_mov("rax")
                     elif function.kind == TokenType.TOKEN_INT32:
@@ -535,11 +535,13 @@ class Compiler:
             elif instr.opcode == Opcode.LOAD_STRING:
                 if instr.value not in strings:
                     string = "str%s" % string_count
-                    self.data.append("%s: db \"%s\", 0\n" % (string, instr.value))
+                    self.data.append("%s: db `%s`, 0\n" % (string, instr.value))
                     strings[instr.value] = string
                     self.stack.append(StackValue(StackValueType.STRING_CONST, string))
+                    string_count += 1
                 else:
-                    raise Exception("Not handled yet")
+                    string = strings[instr.value]
+                    self.stack.append(StackValue(StackValueType.STRING_CONST, string))
 
             elif instr.opcode == Opcode.EXTERN:
                 self.setup.append("extern %s\n" % instr.value)
@@ -547,7 +549,8 @@ class Compiler:
             elif instr.opcode == Opcode.CALL:
                 self.code.append(" call %s\n" % instr.value)
                 if instr.value in self.functions and self.functions[instr.value].kind is not None:
-                    self.stack.append(StackValue(StackValueType.RETURN_VALUE))
+                    kind = self.functions[instr.value].kind
+                    self.stack.append(StackValue(StackValueType.RETURN_VALUE, "eax" if kind == TokenType.TOKEN_INT32 else "rax"))
                 self.reset_registers()
                 calling_stack_offset = 0
 

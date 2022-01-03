@@ -101,8 +101,6 @@ class VarStatement(Node):
         self.expression = expression
 
     def eval(self, compiler):
-        compiler.add(Instruction(Opcode.SET_COMPILING_VAR, self.var_type))
-
         self.expression.eval(compiler)
         if self.var_type.kind == TokenType.TOKEN_INT8:
             compiler.add(Instruction(Opcode.STORE_INT8, self.var_type, self.name.data))

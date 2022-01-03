@@ -1,9 +1,14 @@
 extern printf
 
 pub def main()
-  i64 age = 100 / 2
-  i64 result = (age / 2) + 10 + 100 - 4
-  printf("%d", result)
+  i64 age = get_age()
+  printf("Here %d", age)
 end
 
+def get_age() : i64
+  i64 age = 100 / 2
+  i64 result = (age / 2) + 10 + 100 - 4
+  printf("%d\n", result)
+  return result
+end
 
