@@ -4,7 +4,7 @@ An assembly compiler written with the Python Language.
 # Todo list
 - [ ] Local Variables<br>
   - [x] Int: i8, i16, i32, i64 
-  - [ ] Float: f32, f64, f80
+  - [ ] Float: f64
 - [x] Function calls
 - [x] Arithmetic (+, -, *, /)
 - [ ] Global data storage (variables)
