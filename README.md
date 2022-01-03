@@ -3,13 +3,12 @@ An assembly compiler written with the Python Language.
 
 # Todo list
 - [ ] Local Variables<br>
-  - [x] i8, i16, i32, i64 
-  - [ ] f32, f64, f80
+  - [x] Int: i8, i16, i32, i64 
+  - [ ] Float: f32, f64, f80
 - [x] Function calls
 - [x] Arithmetic (+, -, *, /)
 - [ ] Global data storage (variables)
 - [ ] Arrays
-- [ ] Floats
 - [ ] Condition checking (if, else, else if)
 - [ ] Loops (while, for)
 - [ ] Structs
