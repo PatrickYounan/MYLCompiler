@@ -54,6 +54,8 @@ class Lexer:
             return Token(TokenType.TOKEN_INT32, identifier)
         elif identifier == "i64":
             return Token(TokenType.TOKEN_INT64, identifier)
+        elif identifier == "f64":
+            return Token(TokenType.TOKEN_FLOAT64, identifier)
         elif identifier == "double":
             return Token(TokenType.TOKEN_DOUBLE, identifier)
         elif identifier == "float":
@@ -89,7 +91,7 @@ class Lexer:
 
         if decimals > 1:
             error("A number cannot have more than 1 decimal point.")
-        return Token(TokenType.TOKEN_DIGIT, numeral)
+        return Token(TokenType.TOKEN_DIGIT if decimals == 0 else TokenType.TOKEN_DECIMAL, numeral)
 
     def next_token(self):
         while True:

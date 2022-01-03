@@ -1,3 +1,4 @@
+import math
 from enum import Enum
 from token import *
 import ctypes
@@ -27,6 +28,8 @@ class Opcode(enum.IntEnum):
     SUB = 20
     MUL = 21
     DIV = 22
+    STORE_FLOAT64 = 23
+    MOV_FLOAT_CONST = 24
 
 
 class StackValueType(enum.IntEnum):
@@ -40,6 +43,8 @@ class StackValueType(enum.IntEnum):
     REGISTER16 = 7
     REGISTER32 = 8
     REGISTER64 = 9
+    FLOAT_VAR = 10
+    FLOAT_CONST = 11
 
 
 class StackValue:
@@ -114,10 +119,20 @@ class Compiler:
         bit64 = self.pop_64bit_arg_register()
         return bit64 if required == 64 else bit32
 
+    def movq(self, a, b):
+        if a == b:
+            return
+        self.code.append(" movq %s, %s\n" % (a, b))
+
     def mov(self, a, b):
         if a == b:
             return
         self.code.append(" mov %s, %s\n" % (a, b))
+
+    def movss(self, a, b):
+        if a == b:
+            return
+        self.code.append(" movss %s, %s\n" % (a, b))
 
     def pop_stack(self) -> StackValue:
         stack_value = self.stack.pop()
@@ -132,6 +147,8 @@ class Compiler:
             return StackValue(StackValueType.INT32_VAR, "dword [rsp - %s]" % stack_value.value, stack_value.ptr)
         elif stack_value.kind == StackValueType.INT64_VAR:
             return StackValue(StackValueType.INT64_VAR, "qword [rsp - %s]" % stack_value.value, stack_value.ptr)
+        elif stack_value.kind == StackValueType.FLOAT_VAR:
+            return StackValue(StackValueType.FLOAT_VAR, "dword [rsp - %s]" % stack_value.value, stack_value.ptr)
 
         return stack_value
 
@@ -143,15 +160,21 @@ class Compiler:
             register = self.pop_register(32)
             self.mov("al", value)
             self.code.append(" movzx %s, al\n" % register)
-            return
+            return register
 
         elif stack_value.kind == StackValueType.INT16_VAR:
             register = self.pop_register(32)
             self.mov("ax", value)
             self.code.append(" movzx %s, ax\n" % register)
-            return
+            return register
 
-        elif stack_value.kind == StackValueType.INT32_VAR and register != "eax":
+        elif stack_value.kind == StackValueType.FLOAT_VAR and register != "rax":
+            register = self.pop_register(64)
+            self.code.append(" cvtss2sd xmm0, %s\n" % value)
+            self.movq(register, "xmm0")
+            return register
+
+        elif (stack_value.kind == StackValueType.INT32_VAR) and register != "eax":
             register = self.pop_register(32)
 
         elif (stack_value.kind == StackValueType.INT64_VAR or stack_value.kind == StackValueType.INT_CONST or stack_value.kind == StackValueType.STRING_CONST) and register != "rax":
@@ -166,12 +189,21 @@ class Compiler:
 
         if stack_value.kind == StackValueType.INT_CONST:
             value = stack_value.value
+
             if "." in value:
-                value = value.split(".")[0]
-            stack_value.value = ctypes.c_int64(int(value)).value
+                args = value.split(".")
+                value = value.split(".")[0] if args[1] == "0" else value
+
+            if "." in value:
+                stack_value.value = ctypes.c_double(float(value)).value
+            else:
+                stack_value.value = ctypes.c_int64(int(value)).value
 
         self.stack_offset += 8
-        self.mov("%s [rsp - %s]" % (var_kind, self.var_address_ptr), stack_value.value)
+        if "FLOAT" in stack_kind.name:
+            self.movss("%s [rsp - %s]" % (var_kind, self.var_address_ptr), stack_value.value)
+        else:
+            self.mov("%s [rsp - %s]" % (var_kind, self.var_address_ptr), stack_value.value)
 
         self.vars[name] = Variable(name, self.var_address_ptr, stack_kind, stack_value)
 
@@ -437,7 +469,9 @@ class Compiler:
 
         setup_stack_idx = 0
         strings = {}
+        floats = {}
         string_count = 0
+        float_count = 0
         calling_stack_offset = 0
         function = None
 
@@ -475,6 +509,18 @@ class Compiler:
             elif instr.opcode == Opcode.MOV_INT_CONST:
                 self.stack.append(StackValue(StackValueType.INT_CONST, instr.value))
 
+            elif instr.opcode == Opcode.MOV_FLOAT_CONST:
+                float_name = ""
+                if instr.value not in floats:
+                    float_name = "float%s" % float_count
+                    self.data.append("%s: dd %s\n" % (float_name, instr.value))
+                    floats[instr.value] = float_name
+                    float_count += 1
+                else:
+                    float_name = floats[instr.value]
+                self.movss("xmm0", "dword [%s]" % float_name)
+                self.stack.append(StackValue(StackValueType.FLOAT_CONST, "xmm0"))
+
             elif instr.opcode == Opcode.MOV_UNSIGNED_INT_CONST:
                 self.stack.append(StackValue(StackValueType.INT_CONST, int("-%s" % instr.value) + 2 ** 32))
 
@@ -485,6 +531,7 @@ class Compiler:
             elif instr.opcode == Opcode.ADD:
                 b = self.pop_stack()
                 a = self.pop_stack()
+                print("%s %s" % (a.value, b.value))
                 self.compile_add_op(a, b)
 
             elif instr.opcode == Opcode.SUB:
@@ -526,6 +573,9 @@ class Compiler:
 
             elif instr.opcode == Opcode.STORE_INT32:
                 self.emit_var(instr.value, 4, StackValueType.INT32_VAR, "dword")
+
+            elif instr.opcode == Opcode.STORE_FLOAT64:
+                self.emit_var(instr.value, 4, StackValueType.FLOAT_VAR, "dword")
 
             elif instr.opcode == Opcode.STORE_INT64:
                 self.emit_var(instr.value, 8, StackValueType.INT64_VAR, "qword")

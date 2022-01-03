@@ -1,11 +1,6 @@
 extern printf
 
 pub def main()
-  i64 age = get_age()
-  printf("Here %d", age)
-end
-
-def get_age() : i64
-  i64 result = 64
-  return result
+  f64 result = 10.6
+  printf("%f", result)
 end

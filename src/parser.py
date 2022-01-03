@@ -91,6 +91,8 @@ class LiteralExpression(Node):
             compiler.add(Instruction(Opcode.LOAD_VAR, self.token, self.token.data))
         elif self.token.kind == TokenType.TOKEN_STRING:
             compiler.add(Instruction(Opcode.LOAD_STRING, self.token, self.token.data))
+        elif self.token.kind == TokenType.TOKEN_DECIMAL:
+            compiler.add(Instruction(Opcode.MOV_FLOAT_CONST, self.token, self.token.data if compiler.state != "-" else "-%s" % self.token.data))
 
 
 class VarStatement(Node):
@@ -110,6 +112,8 @@ class VarStatement(Node):
             compiler.add(Instruction(Opcode.STORE_INT32, self.var_type, self.name.data))
         elif self.var_type.kind == TokenType.TOKEN_INT64:
             compiler.add(Instruction(Opcode.STORE_INT64, self.var_type, self.name.data))
+        elif self.var_type.kind == TokenType.TOKEN_FLOAT64:
+            compiler.add(Instruction(Opcode.STORE_FLOAT64, self.var_type, self.name.data))
 
 
 class ElseStatement(Node):
@@ -322,7 +326,7 @@ class Parser:
             raise Exception("Error. pub can only be used with a def token.")
         elif self.parse_match(TokenType.TOKEN_IDENTIFIER):
             return self.parse_identifier_statement()
-        elif self.parse_token_matches([TokenType.TOKEN_INT8, TokenType.TOKEN_INT16, TokenType.TOKEN_INT32, TokenType.TOKEN_INT64]):
+        elif self.parse_token_matches([TokenType.TOKEN_INT8, TokenType.TOKEN_INT16, TokenType.TOKEN_INT32, TokenType.TOKEN_INT64, TokenType.TOKEN_FLOAT64]):
             return self.parse_var_statement()
         elif self.parse_match(TokenType.TOKEN_IF):
             return self.parse_if_statement()
@@ -379,7 +383,7 @@ class Parser:
             return exp
         elif self.parse_match(TokenType.TOKEN_IDENTIFIER):
             return self.parse_identifier_literal()
-        elif self.parse_match(TokenType.TOKEN_DIGIT) or self.parse_match(TokenType.TOKEN_STRING):
+        elif self.parse_token_matches([TokenType.TOKEN_DIGIT, TokenType.TOKEN_STRING, TokenType.TOKEN_DECIMAL]):
             return self.parse_literal()
         return None
 

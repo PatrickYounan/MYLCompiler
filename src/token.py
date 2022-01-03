@@ -46,6 +46,8 @@ class TokenType(enum.IntEnum):
     TOKEN_RETURN = 39
     TOKEN_PUB = 40
     TOKEN_QUESTION = 41
+    TOKEN_FLOAT64 = 42
+    TOKEN_DECIMAL = 45
 
 
 class Token:
