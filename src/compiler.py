@@ -25,7 +25,9 @@ class Opcode(enum.IntEnum):
     PUSH_ARGUMENT = 18
     ADD = 19
     SUB = 20
-    SET_COMPILING_VAR = 21
+    MUL = 21
+    DIV = 22
+    SET_COMPILING_VAR = 23
 
 
 class StackValueType(enum.IntEnum):
@@ -75,6 +77,7 @@ class Function:
     def __init__(self, name, kind):
         self.name = name
         self.kind = kind
+        self.has_return_value = False
 
 
 class Compiler:
@@ -114,6 +117,7 @@ class Compiler:
     def pop_register(self, required):
         if not self.registers_32bit or not self.registers_64bit:
             return "rax" if required == 64 else "eax"
+
         bit32 = self.pop_32bit_arg_register()
         bit64 = self.pop_64bit_arg_register()
         return bit64 if required == 64 else bit32
@@ -166,7 +170,10 @@ class Compiler:
         self.var_address_ptr += byte_amount
 
         if stack_value.kind == StackValueType.INT_CONST:
-            stack_value.value = ctypes.c_int64(int(stack_value.value)).value
+            value = stack_value.value
+            if "." in value:
+                value = value.split(".")[0]
+            stack_value.value = ctypes.c_int64(int(value)).value
 
         self.stack_offset += 8
         self.code.append(" mov %s [rsp - %s], %s\n" % (var_kind, self.var_address_ptr, stack_value.value))
@@ -185,55 +192,146 @@ class Compiler:
         self.stack.append(StackValue(StackValueType.INT_CONST, str(int(a.value) + int(b.value))))
 
     def add_i8(self, a, b):
-        self.code.append(" mov dh, %s\n" % a.value)
-        self.code.append(" mov dl, %s\n" % b.value)
-        self.code.append(" add dh, dl\n")
-        self.stack.append(StackValue(StackValueType.REGISTER8, "dh"))
+        self.code.append(" mov ah, %s\n" % a.value)
+        self.code.append(" mov dh, %s\n" % b.value)
+        self.code.append(" add ah, dh\n")
+        self.stack.append(StackValue(StackValueType.REGISTER8, "ah"))
 
     def add_i16(self, a, b):
-        self.code.append(" mov dx, %s\n" % a.value)
-        self.code.append(" mov bx, %s\n" % b.value)
-        self.code.append(" add dx, bx\n")
-        self.stack.append(StackValue(StackValueType.REGISTER16, "dx"))
+        self.code.append(" mov ax, %s\n" % a.value)
+        self.code.append(" mov dx, %s\n" % b.value)
+        self.code.append(" add ax, dx\n")
+        self.stack.append(StackValue(StackValueType.REGISTER16, "ax"))
 
     def add_i32(self, a, b):
-        self.code.append(" mov ebx, %s\n" % a.value)
+        self.code.append(" mov eax, %s\n" % a.value)
         self.code.append(" mov edx, %s\n" % b.value)
-        self.code.append(" add ebx, edx\n")
-        self.stack.append(StackValue(StackValueType.REGISTER32, "ebx"))
+        self.code.append(" add eax, edx\n")
+        self.stack.append(StackValue(StackValueType.REGISTER32, "eax"))
 
     def add_i64(self, a, b):
-        self.code.append(" mov rbx, %s\n" % a.value)
+        self.code.append(" mov rax, %s\n" % a.value)
         self.code.append(" mov rdx, %s\n" % b.value)
-        self.code.append(" add rbx, rdx\n")
-        self.stack.append(StackValue(StackValueType.REGISTER64, "rbx"))
+        self.code.append(" add rax, rdx\n")
+        self.stack.append(StackValue(StackValueType.REGISTER64, "rax"))
 
     def sub_int_consts(self, a, b):
         self.stack.append(StackValue(StackValueType.INT_CONST, str(int(a.value) - int(b.value))))
 
     def sub_i8(self, a, b):
-        self.code.append(" mov dl, %s\n" % a.value)
+        self.code.append(" mov ah, %s\n" % a.value)
         self.code.append(" mov dh, %s\n" % b.value)
-        self.code.append(" sub dl, dh\n")
-        self.stack.append(StackValue(StackValueType.REGISTER8, "dl"))
+        self.code.append(" sub ah, dh\n")
+        self.stack.append(StackValue(StackValueType.REGISTER8, "ah"))
 
     def sub_i16(self, a, b):
-        self.code.append(" mov bx, %s\n" % a.value)
+        self.code.append(" mov ax, %s\n" % a.value)
         self.code.append(" mov dx, %s\n" % b.value)
-        self.code.append(" sub bx, dx\n")
-        self.stack.append(StackValue(StackValueType.REGISTER16, "bx"))
+        self.code.append(" sub ax, dx\n")
+        self.stack.append(StackValue(StackValueType.REGISTER16, "ax"))
 
     def sub_i32(self, a, b):
-        self.code.append(" mov edx, %s\n" % a.value)
-        self.code.append(" mov ebx, %s\n" % b.value)
-        self.code.append(" sub edx, ebx\n")
-        self.stack.append(StackValue(StackValueType.REGISTER32, "edx"))
+        self.code.append(" mov eax, %s\n" % a.value)
+        self.code.append(" mov edx, %s\n" % b.value)
+        self.code.append(" sub eax, edx\n")
+        self.stack.append(StackValue(StackValueType.REGISTER32, "eax"))
 
     def sub_i64(self, a, b):
-        self.code.append(" mov rdx, %s\n" % a.value)
+        self.code.append(" mov rax, %s\n" % a.value)
+        self.code.append(" mov rdx, %s\n" % b.value)
+        self.code.append(" sub rax, rdx\n")
+        self.stack.append(StackValue(StackValueType.REGISTER64, "rax"))
+
+    def mul_int_consts(self, a, b):
+        self.stack.append(StackValue(StackValueType.INT_CONST, str(int(a.value) * int(b.value))))
+
+    def mul_i8(self, a, b):
+        self.code.append(" mov al, %s\n" % a.value)
+        self.code.append(" mov bl, %s\n" % b.value)
+        self.code.append(" imul bl\n")
+        self.stack.append(StackValue(StackValueType.REGISTER8, "al"))
+
+    def mul_i16(self, a, b):
+        self.code.append(" mov ax, %s\n" % a.value)
+        self.code.append(" mov bx, %s\n" % b.value)
+        self.code.append(" imul bx\n")
+        self.stack.append(StackValue(StackValueType.REGISTER16, "ax"))
+
+    def mul_i32(self, a, b):
+        self.code.append(" mov eax, %s\n" % a.value)
+        self.code.append(" mov ebx, %s\n" % b.value)
+        self.code.append(" imul ebx\n")
+        self.stack.append(StackValue(StackValueType.REGISTER32, "eax"))
+
+    def mul_i64(self, a, b):
+        self.code.append(" mov rax, %s\n" % a.value)
+        self.code.append(" mov rdx, %s\n" % b.value)
+        self.code.append(" imul rdx\n")
+        self.stack.append(StackValue(StackValueType.REGISTER64, "rax"))
+
+    def div_int_consts(self, a, b):
+        self.stack.append(StackValue(StackValueType.INT_CONST, str(int(a.value) / int(b.value))))
+
+    def div_i8(self, a, b):
+        self.code.append(" mov al, %s\n" % a.value)
+        self.code.append(" cbw\n")
+        self.code.append(" mov bl, %s\n" % b.value)
+        self.code.append(" idiv bl\n")
+        self.stack.append(StackValue(StackValueType.REGISTER8, "al"))
+
+    def div_i16(self, a, b):
+        self.code.append(" mov ax, %s\n" % a.value)
+        self.code.append(" cwd\n")
+        self.code.append(" mov bx, %s\n" % b.value)
+        self.code.append(" idiv bx\n")
+        self.stack.append(StackValue(StackValueType.REGISTER16, "ax"))
+
+    def div_i32(self, a, b):
+        self.code.append(" mov eax, %s\n" % a.value)
+        self.code.append(" cdq\n")
+        self.code.append(" mov ebx, %s\n" % b.value)
+        self.code.append(" idiv ebx\n")
+        self.stack.append(StackValue(StackValueType.REGISTER32, "eax"))
+
+    def div_i64(self, a, b):
+        self.code.append(" mov rax, %s\n" % a.value)
+        self.code.append(" cdq\n")
         self.code.append(" mov rbx, %s\n" % b.value)
-        self.code.append(" sub rdx, rbx\n")
-        self.stack.append(StackValue(StackValueType.REGISTER64, "rdx"))
+        self.code.append(" idiv rbx\n")
+        self.stack.append(StackValue(StackValueType.REGISTER64, "rax"))
+
+    def compile_div_op(self, a, b):
+        if a.kind == StackValueType.INT_CONST:
+            if b.kind == StackValueType.INT_CONST:
+                self.div_int_consts(a, b)
+            elif b.kind == StackValueType.INT8_VAR:
+                self.div_i8(a, b)
+            elif b.kind == StackValueType.INT16_VAR:
+                self.div_i16(a, b)
+            elif b.kind == StackValueType.INT32_VAR:
+                self.div_i32(a, b)
+            elif b.kind == StackValueType.INT64_VAR:
+                self.div_i64(a, b)
+        elif a.kind == StackValueType.REGISTER8 or a.kind == StackValueType.INT8_VAR:
+            if b.kind == StackValueType.INT_CONST or b.kind == StackValueType.INT8_VAR or b.kind == StackValueType.REGISTER8:
+                self.div_i8(a, b)
+            else:
+                self.error("An I8 can only be divided by another I8 or Int Constant.")
+        elif a.kind == StackValueType.REGISTER16 or a.kind == StackValueType.INT16_VAR:
+            if b.kind == StackValueType.INT_CONST or b.kind == StackValueType.INT16_VAR or b.kind == StackValueType.REGISTER16:
+                self.div_i16(a, b)
+            else:
+                self.error("An I16 can only be divided by another I16 or Int Constant.")
+        elif a.kind == StackValueType.REGISTER32 or a.kind == StackValueType.INT32_VAR:
+            if b.kind == StackValueType.INT_CONST or b.kind == StackValueType.INT32_VAR or b.kind == StackValueType.REGISTER32:
+                self.div_i32(a, b)
+            else:
+                self.error("An I32 can only be divided by another I32 or Int Constant.")
+        elif a.kind == StackValueType.REGISTER64 or a.kind == StackValueType.INT64_VAR:
+            if b.kind == StackValueType.INT_CONST or b.kind == StackValueType.INT64_VAR or b.kind == StackValueType.REGISTER64:
+                self.div_i64(a, b)
+            else:
+                self.error("An I64 can only be divided by another I64 or Int Constant.")
 
     def compile_sub_op(self, a, b):
         if a.kind == StackValueType.INT_CONST:
@@ -305,6 +403,39 @@ class Compiler:
             else:
                 self.error("An I64 can only be added to another I64 or Int Constant.")
 
+    def compile_mul_op(self, a, b):
+        if a.kind == StackValueType.INT_CONST:
+            if b.kind == StackValueType.INT_CONST:
+                self.mul_int_consts(a, b)
+            elif b.kind == StackValueType.INT8_VAR:
+                self.mul_i8(a, b)
+            elif b.kind == StackValueType.INT16_VAR:
+                self.mul_i16(a, b)
+            elif b.kind == StackValueType.INT32_VAR:
+                self.mul_i32(a, b)
+            elif b.kind == StackValueType.INT64_VAR:
+                self.mul_i64(a, b)
+        elif a.kind == StackValueType.REGISTER8 or a.kind == StackValueType.INT8_VAR:
+            if b.kind == StackValueType.INT_CONST or b.kind == StackValueType.INT8_VAR or b.kind == StackValueType.REGISTER8:
+                self.mul_i8(a, b)
+            else:
+                self.error("An I8 can only be multiplied by another I8 or Int Constant.")
+        elif a.kind == StackValueType.REGISTER16 or a.kind == StackValueType.INT16_VAR:
+            if b.kind == StackValueType.INT_CONST or b.kind == StackValueType.INT16_VAR or b.kind == StackValueType.REGISTER16:
+                self.mul_i16(a, b)
+            else:
+                self.error("An I16 can only be multiplied by another I16 or Int Constant.")
+        elif a.kind == StackValueType.REGISTER32 or a.kind == StackValueType.INT32_VAR:
+            if b.kind == StackValueType.INT_CONST or b.kind == StackValueType.INT32_VAR or b.kind == StackValueType.REGISTER32:
+                self.mul_i32(a, b)
+            else:
+                self.error("An I32 can only be multiplied by another I32 or Int Constant.")
+        elif a.kind == StackValueType.REGISTER64 or a.kind == StackValueType.INT64_VAR:
+            if b.kind == StackValueType.INT_CONST or b.kind == StackValueType.INT64_VAR or b.kind == StackValueType.REGISTER64:
+                self.mul_i64(a, b)
+            else:
+                self.error("An I64 can only be multiplied by another I64 or Int Constant.")
+
     def compile(self, path):
         self.walk_tree()
         file = open(path, "w")
@@ -313,6 +444,7 @@ class Compiler:
         strings = {}
         string_count = 0
         calling_stack_offset = 0
+        function = None
 
         for ip in range(0, len(self.instructions)):
             instr = self.instructions[ip]
@@ -322,10 +454,12 @@ class Compiler:
                 self.stack_offset = 0
                 self.var_address_ptr = 0
                 self.code.append("%s:\n" % instr.value)
+                function = self.functions[instr.value]
 
             elif instr.opcode == Opcode.START_PUB_PROC:
                 self.code.append("%s:\n" % instr.value)
                 self.setup.append("global %s\n" % instr.value)
+                function = self.functions[instr.value]
 
             elif instr.opcode == Opcode.SETUP_STACK:
                 setup_stack_idx = len(self.code)
@@ -366,9 +500,29 @@ class Compiler:
                 a = self.pop_stack()
                 self.compile_sub_op(a, b)
 
+            elif instr.opcode == Opcode.MUL:
+                b = self.pop_stack()
+                a = self.pop_stack()
+                self.compile_mul_op(a, b)
+
+            elif instr.opcode == Opcode.DIV:
+                b = self.pop_stack()
+                a = self.pop_stack()
+                self.compile_div_op(a, b)
+
             elif instr.opcode == Opcode.RETURN:
                 if self.stack:
-                    self.emit_mov("rax")
+                    if function.kind is None:
+                        self.error("Function has no returning value.")
+                    if function.kind == TokenType.TOKEN_INT64:
+                        self.emit_mov("rax")
+                    elif function.kind == TokenType.TOKEN_INT32:
+                        self.emit_mov("eax")
+                    elif function.kind == TokenType.TOKEN_INT16:
+                        self.emit_mov("ax")
+                    elif function.kind == TokenType.TOKEN_INT8:
+                        self.emit_mov("al")
+                    function.has_return_value = True
                 else:
                     self.code.append(" ret\n")
 
@@ -416,6 +570,10 @@ class Compiler:
                     calling_stack_offset += 8
 
             elif instr.opcode == Opcode.END_PROC:
+
+                # Check if the function requires a return value.
+                if function.kind is not None and not function.has_return_value:
+                    self.error("Function %s requires a return value." % function.name)
 
                 # If the last code was 'ret', don't emit ret again.
                 if "ret" not in self.code[len(self.code) - 1]:

@@ -59,6 +59,10 @@ class BinaryExpression(Node):
             compiler.add(Instruction(Opcode.ADD))
         elif self.operator.kind == TokenType.TOKEN_DASH:
             compiler.add(Instruction(Opcode.SUB))
+        elif self.operator.kind == TokenType.TOKEN_STAR:
+            compiler.add(Instruction(Opcode.MUL))
+        elif self.operator.kind == TokenType.TOKEN_SLASH:
+            compiler.add(Instruction(Opcode.DIV))
 
 
 class UnaryExpression(Node):
@@ -82,8 +86,7 @@ class LiteralExpression(Node):
 
     def eval(self, compiler):
         if self.token.kind == TokenType.TOKEN_DIGIT:
-            opcode = Opcode.MOV_UNSIGNED_INT_CONST if compiler.state == "-" else Opcode.MOV_INT_CONST
-            compiler.add(Instruction(opcode, self.token, self.token.data))
+            compiler.add(Instruction(Opcode.MOV_INT_CONST, self.token, self.token.data if compiler.state != "-" else "-%s" % self.token.data))
         elif self.token.kind == TokenType.TOKEN_IDENTIFIER:
             compiler.add(Instruction(Opcode.LOAD_VAR, self.token, self.token.data))
         elif self.token.kind == TokenType.TOKEN_STRING:
@@ -141,7 +144,7 @@ class DefStatement(Node):
 
     def eval(self, compiler):
         compiler.functions[self.name.data] = Function(self.name.data, self.def_type.kind if self.def_type is not None else None)
-        compiler.add(Instruction(Opcode.START_PROC if not self.public else Opcode.START_PUB_PROC, self.name, self.name.data))
+        compiler.add(Instruction(Opcode.START_PROC if not self.public else Opcode.START_PUB_PROC, self.def_type, self.name.data))
         compiler.add(Instruction(Opcode.SETUP_STACK))
         for statement in self.block:
             statement.eval(compiler)
