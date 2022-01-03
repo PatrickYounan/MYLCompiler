@@ -189,15 +189,7 @@ class Compiler:
 
         if stack_value.kind == StackValueType.INT_CONST:
             value = stack_value.value
-
-            if "." in value:
-                args = value.split(".")
-                value = value.split(".")[0] if args[1] == "0" else value
-
-            if "." in value:
-                stack_value.value = ctypes.c_double(float(value)).value
-            else:
-                stack_value.value = ctypes.c_int64(int(value)).value
+            stack_value.value = ctypes.c_int64(int(value)).value
 
         self.stack_offset += 8
         if "FLOAT" in stack_kind.name:
