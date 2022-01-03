@@ -142,13 +142,13 @@ class Compiler:
 
         if stack_value.kind == StackValueType.INT8_VAR:
             register = self.pop_register(32)
-            self.code.append(" mov al, %s\n" % value)
+            self.mov("al", value)
             self.code.append(" movzx %s, al\n" % register)
             return
 
         elif stack_value.kind == StackValueType.INT16_VAR:
             register = self.pop_register(32)
-            self.code.append(" mov ax, %s\n" % value)
+            self.mov("ax", value)
             self.code.append(" movzx %s, ax\n" % register)
             return
 
@@ -158,7 +158,7 @@ class Compiler:
         elif (stack_value.kind == StackValueType.INT64_VAR or stack_value.kind == StackValueType.STRING_CONST) and register != "rax":
             register = self.pop_register(64)
 
-        self.code.append(" mov %s, %s\n" % (register, value))
+        self.mov(register, value)
         return register
 
     def emit_var(self, name, byte_amount, stack_kind, var_kind):
@@ -172,7 +172,7 @@ class Compiler:
             stack_value.value = ctypes.c_int64(int(value)).value
 
         self.stack_offset += 8
-        self.code.append(" mov %s [rsp - %s], %s\n" % (var_kind, self.var_address_ptr, stack_value.value))
+        self.mov("%s [rsp - %s]" % (var_kind, self.var_address_ptr), stack_value.value)
 
         self.vars[name] = Variable(name, self.var_address_ptr, stack_kind, stack_value)
 
@@ -460,7 +460,7 @@ class Compiler:
             elif instr.opcode == Opcode.SETUP_STACK:
                 setup_stack_idx = len(self.code)
                 self.code.append(" push rbp\n")
-                self.code.append(" mov rbp, rsp\n")
+                self.mov("rbp", "rsp")
                 self.code.append(" sub rsp, #\n")
 
             elif instr.opcode == Opcode.CLOSE_STACK:
@@ -563,7 +563,7 @@ class Compiler:
 
                 # Move the arguments on the stack.
                 if register == "rax" or register == "eax":
-                    self.code.append(" mov [rsp + %s], %s\n" % (hex(32 + calling_stack_offset), register))
+                    self.mov("[rsp + %s]" % hex(32 + calling_stack_offset), register)
                     calling_stack_offset += 8
 
             elif instr.opcode == Opcode.END_PROC:
