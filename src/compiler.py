@@ -50,12 +50,6 @@ class StackValue:
         self.value = value
         self.ptr = ptr
 
-    def is_int(self):
-        return self.kind == StackValueType.INT_CONST
-
-    def __str__(self):
-        return "kind=%s value=%s ptr=%s" % (self.kind, self.value, self.ptr)
-
 
 class Instruction:
     def __init__(self, opcode, token=None, value="", state=""):
