@@ -1,0 +1,10 @@
+extern printf
+
+pub def main()
+  i32 i = 32
+  i8 z = 100
+  i32 hi = 323
+  i64 cool = 23
+  printf("%d %d %d %d %d %d %d %d %d %d", i, z, hi, hi, cool, cool, cool, cool, cool, hi)
+  return 0
+end

@@ -1,0 +1,7 @@
+extern printf
+
+pub def main()
+  i64 age = 100 / 2
+  i64 result = (age / 2) + 10
+  printf("%d", result)
+end

@@ -1,2 +1,3 @@
-test/
-program.exe
+test/test.asm
+test/test.obj
+run.exe
