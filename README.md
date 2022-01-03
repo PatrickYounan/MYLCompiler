@@ -2,10 +2,14 @@
 An assembly compiler written with the Python Language.
 
 # Todo list
-- [x] Local Int Variables (i8, i16, i32, i64)
+- [ ] Local Variables<br>
+  - [x] i8, i16, i32, i64 
+  - [ ] f32, f64, f80
 - [x] Function calls
 - [x] Arithmetic (+, -, *, /)
 - [ ] Global data storage (variables)
+- [ ] Arrays
+- [ ] Floats
 - [ ] Condition checking (if, else, else if)
 - [ ] Loops (while, for)
 - [ ] Structs
@@ -18,9 +22,13 @@ An assembly compiler written with the Python Language.
 extern printf
 
 pub def main()
-  i64 age = 100 / 2
-  i64 result = (age / 2) + 10 + 100 - 4
-  printf("%d", result)
+  i64 age = get_age()
+  printf("Here %d", age)
+end
+
+def get_age() : i64
+  i64 result = 64
+  return result
 end
 ```
 

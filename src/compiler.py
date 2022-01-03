@@ -35,12 +35,11 @@ class StackValueType(enum.IntEnum):
     INT16_VAR = 2
     INT32_VAR = 3
     INT64_VAR = 4
-    RETURN_VALUE = 5
-    STRING_CONST = 6
-    REGISTER8 = 7
-    REGISTER16 = 8
-    REGISTER32 = 9
-    REGISTER64 = 10
+    STRING_CONST = 5
+    REGISTER8 = 6
+    REGISTER16 = 7
+    REGISTER32 = 8
+    REGISTER64 = 9
 
 
 class StackValue:
@@ -155,7 +154,7 @@ class Compiler:
         elif stack_value.kind == StackValueType.INT32_VAR and register != "eax":
             register = self.pop_register(32)
 
-        elif (stack_value.kind == StackValueType.INT64_VAR or stack_value.kind == StackValueType.STRING_CONST) and register != "rax":
+        elif (stack_value.kind == StackValueType.INT64_VAR or stack_value.kind == StackValueType.INT_CONST or stack_value.kind == StackValueType.STRING_CONST) and register != "rax":
             register = self.pop_register(64)
 
         self.mov(register, value)
@@ -507,7 +506,6 @@ class Compiler:
                 if self.stack:
                     if function.kind is None:
                         self.error("Function has no returning value.")
-                    print(self.stack)
                     if function.kind == TokenType.TOKEN_INT64:
                         self.emit_mov("rax")
                     elif function.kind == TokenType.TOKEN_INT32:
@@ -548,9 +546,18 @@ class Compiler:
 
             elif instr.opcode == Opcode.CALL:
                 self.code.append(" call %s\n" % instr.value)
+
                 if instr.value in self.functions and self.functions[instr.value].kind is not None:
                     kind = self.functions[instr.value].kind
-                    self.stack.append(StackValue(StackValueType.RETURN_VALUE, "eax" if kind == TokenType.TOKEN_INT32 else "rax"))
+                    if kind == TokenType.TOKEN_INT8:
+                        self.stack.append(StackValue(StackValueType.REGISTER8, "al"))
+                    elif kind == TokenType.TOKEN_INT16:
+                        self.stack.append(StackValue(StackValueType.REGISTER16, "ax"))
+                    elif kind == TokenType.TOKEN_INT32:
+                        self.stack.append(StackValue(StackValueType.REGISTER32, "eax"))
+                    elif kind == TokenType.TOKEN_INT64:
+                        self.stack.append(StackValue(StackValueType.REGISTER64, "rax"))
+
                 self.reset_registers()
                 calling_stack_offset = 0
 
