@@ -46,8 +46,14 @@ class Lexer:
             return Token(TokenType.TOKEN_THEN, identifier)
         elif identifier == "end":
             return Token(TokenType.TOKEN_END, identifier)
-        elif identifier == "int":
-            return Token(TokenType.TOKEN_INT, identifier)
+        elif identifier == "i8":
+            return Token(TokenType.TOKEN_INT8, identifier)
+        elif identifier == "i16":
+            return Token(TokenType.TOKEN_INT16, identifier)
+        elif identifier == "i32":
+            return Token(TokenType.TOKEN_INT32, identifier)
+        elif identifier == "i64":
+            return Token(TokenType.TOKEN_INT64, identifier)
         elif identifier == "double":
             return Token(TokenType.TOKEN_DOUBLE, identifier)
         elif identifier == "float":
@@ -56,6 +62,10 @@ class Lexer:
             return Token(TokenType.TOKEN_EXTERN, identifier)
         elif identifier == "include":
             return Token(TokenType.TOKEN_INCLUDE, identifier)
+        elif identifier == "return":
+            return Token(TokenType.TOKEN_RETURN, identifier)
+        elif identifier == "pub":
+            return Token(TokenType.TOKEN_PUB, identifier)
 
         return Token(TokenType.TOKEN_IDENTIFIER, identifier)
 
@@ -126,6 +136,10 @@ class Lexer:
                 self.peek_char()
                 return self.new_token_advance(TokenType.TOKEN_AND, "&&", 2) if self.peek == '&' else self.new_token_advance(TokenType.TOKEN_BITWISE_AND, "&", 1)
             elif self.head == ':':
-                return self.new_token_advance(TokenType.TOKEN_TYPE_DEFINE, ":", 1)
+                return self.new_token_advance(TokenType.TOKEN_COLON, ":", 1)
+            elif self.head == '?':
+                return self.new_token_advance(TokenType.TOKEN_QUESTION, "?", 1)
+            elif self.head == ":":
+                return self.new_token_advance(TokenType.TOKEN_COLON, ":", 1)
             else:
                 self.lex_advance()

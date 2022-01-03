@@ -1,271 +1,434 @@
 from enum import Enum
 from token import *
-
-compiled_files = {}
+import ctypes
 
 
 class Opcode(enum.IntEnum):
     START_PROC = 0
-    END_PROC = 1
-    MOV_IMMI = 2
-    MOV_IMMS = 3
-    STORE_INT = 4
-    LOAD_CONST = 5
-    BINARY_OP = 6
-    COMPARE_OP = 7
-    CALL = 8
-    EXTERN = 9
-    MOV_TO_REG = 10
-    ALLOC_BYTES = 11
-    RES_STACK_PTR = 12
-    INCLUDE = 13
-    ENDIF = 14
-    LABEL = 15
+    START_PUB_PROC = 1
+    END_PROC = 2,
+    MOV_INT_CONST = 3
+    MOV_UNSIGNED_INT_CONST = 4
+    NEGATE = 5
+    NOT = 6
+    RETURN = 7
+    STORE_INT8 = 8
+    STORE_INT16 = 9
+    STORE_INT32 = 10
+    STORE_INT64 = 11
+    SETUP_STACK = 12
+    CLOSE_STACK = 13
+    LOAD_VAR = 14
+    CALL = 15
+    EXTERN = 16
+    LOAD_STRING = 17
+    PUSH_ARGUMENT = 18
+    ADD = 19
+    SUB = 20
+    SET_COMPILING_VAR = 21
 
 
 class StackValueType(enum.IntEnum):
-    INT = 0,
-    REF = 1,
-    BOOL = 2
+    INT_CONST = 0
+    INT8_VAR = 1
+    INT16_VAR = 2
+    INT32_VAR = 3
+    INT64_VAR = 4
+    RETURN_VALUE = 5
+    STRING_CONST = 6
+    REGISTER8 = 7
+    REGISTER16 = 8
+    REGISTER32 = 9
+    REGISTER64 = 10
 
 
 class StackValue:
-    def __init__(self, val_type, value):
-        self.val_type = val_type
+    def __init__(self, kind, value="", ptr=0):
+        self.kind = kind
         self.value = value
-        self.ptr = 0
-        self.name = ""
-
-
-class Variable:
-    def __init__(self, name, ptr, value, line):
         self.ptr = ptr
-        self.name = name
-        self.value = value
-        self.line = line
-        self.using = False
-        self.used_lines = []
+
+    def is_int(self):
+        return self.kind == StackValueType.INT_CONST
+
+    def __str__(self):
+        return "kind=%s value=%s ptr=%s" % (self.kind, self.value, self.ptr)
 
 
 class Instruction:
-    def __init__(self, opcode, token=None, value=""):
-        self.opcode = opcode
+    def __init__(self, opcode, token=None, value="", state=""):
         self.token = token
         self.value = value
+        self.opcode = opcode
+        self.state = state
+
+
+class Variable:
+    def __init__(self, name, ptr, kind, cur_value):
+        self.name = name
+        self.ptr = ptr
+        self.kind = kind
+        self.cur_value = cur_value
+
+
+class Function:
+    def __init__(self, name, kind):
+        self.name = name
+        self.kind = kind
 
 
 class Compiler:
 
-    def __init__(self, asm_path, parser):
-        self.instructions = []
+    def __init__(self, parser):
         self.parser = parser
-        self.asm_path = asm_path
+        self.instructions = []
         self.stack = []
-        self.branch_stack = []
-        self.registers = ["r9", "r8", "rdx", "rcx"]
-        self.scope = -1
+        self.state = ""
+        self.vars = {}
+        self.stack_offset = 0
+        self.var_address_ptr = 0
+        self.registers_64bit = ["r9", "r8", "rdx", "rcx"]
+        self.registers_32bit = ["r9d", "r8d", "edx", "ecx"]
+        self.functions = {}
+        self.code = ["SECTION .text\n"]
+        self.setup = []
+        self.data = []
 
-    @staticmethod
-    def write_section(file, data):
-        for string in data:
-            file.write(string)
-        file.write("\n")
+    def error(self, message):
+        raise Exception(message)
+
+    def add(self, instr):
+        self.instructions.append(instr)
+
+    def pop_32bit_arg_register(self):
+        return self.registers_32bit.pop()
+
+    def pop_64bit_arg_register(self):
+        return self.registers_64bit.pop()
 
     def reset_registers(self):
-        self.registers = ["r9", "r8", "rdx", "rcx"]
+        self.registers_64bit = ["r9", "r8", "rdx", "rcx"]
+        self.registers_32bit = ["r9d", "r8d", "edx", "ecx"]
+
+    # This function pops every registers for each bit size but chooses the one we require.
+    def pop_register(self, required):
+        if not self.registers_32bit or not self.registers_64bit:
+            return "rax" if required == 64 else "eax"
+        bit32 = self.pop_32bit_arg_register()
+        bit64 = self.pop_64bit_arg_register()
+        return bit64 if required == 64 else bit32
+
+    def pop_stack(self) -> StackValue:
+        stack_value = self.stack.pop()
+
+        if stack_value.kind == StackValueType.INT_CONST:
+            return stack_value
+        elif stack_value.kind == StackValueType.INT8_VAR:
+            return StackValue(StackValueType.INT8_VAR, "byte [rsp - %s]" % stack_value.value, stack_value.ptr)
+        elif stack_value.kind == StackValueType.INT16_VAR:
+            return StackValue(StackValueType.INT16_VAR, "word [rsp - %s]" % stack_value.value, stack_value.ptr)
+        elif stack_value.kind == StackValueType.INT32_VAR:
+            return StackValue(StackValueType.INT32_VAR, "dword [rsp - %s]" % stack_value.value, stack_value.ptr)
+        elif stack_value.kind == StackValueType.INT64_VAR:
+            return StackValue(StackValueType.INT64_VAR, "qword [rsp - %s]" % stack_value.value, stack_value.ptr)
+        elif stack_value.kind == StackValueType.RETURN_VALUE:
+            return StackValue(StackValueType.RETURN_VALUE, "eax")
+
+        return stack_value
+
+    def emit_mov(self, register="eax"):
+        stack_value = self.pop_stack()
+        value = stack_value.value
+
+        if stack_value.kind == StackValueType.INT8_VAR:
+            register = self.pop_register(32)
+            self.code.append(" mov al, %s\n" % value)
+            self.code.append(" movzx %s, al\n" % register)
+            return
+
+        elif stack_value.kind == StackValueType.INT16_VAR:
+            register = self.pop_register(32)
+            self.code.append(" mov ax, %s\n" % value)
+            self.code.append(" movzx %s, ax\n" % register)
+            return
+
+        elif stack_value.kind == StackValueType.INT32_VAR:
+            register = self.pop_register(32)
+
+        elif stack_value.kind == StackValueType.INT64_VAR or stack_value.kind == StackValueType.STRING_CONST:
+            register = self.pop_register(64)
+
+        self.code.append(" mov %s, %s\n" % (register, value))
+        return register
+
+    def emit_var(self, name, byte_amount, stack_kind, var_kind):
+        stack_value = self.pop_stack()
+        self.var_address_ptr += byte_amount
+
+        if stack_value.kind == StackValueType.INT_CONST:
+            stack_value.value = ctypes.c_int64(int(stack_value.value)).value
+
+        self.stack_offset += 8
+        self.code.append(" mov %s [rsp - %s], %s\n" % (var_kind, self.var_address_ptr, stack_value.value))
+
+        self.vars[name] = Variable(name, self.var_address_ptr, stack_kind, stack_value)
 
     def walk_tree(self):
         while True:
             node = self.parser.parse_statement()
             if node is None:
                 break
-            node.compile(self)
+            print(node)
+            node.eval(self)
 
-    def append_cmp_op(self, cmp_op, a, b):
+    def add_int_consts(self, a, b):
+        self.stack.append(StackValue(StackValueType.INT_CONST, str(int(a.value) + int(b.value))))
 
-        if cmp_op == TokenType.TOKEN_ISEQ:
-            self.stack.append(StackValue(StackValueType.BOOL, int(a.value) == int(b.value)))
+    def add_i8(self, a, b):
+        self.code.append(" mov dh, %s\n" % a.value)
+        self.code.append(" mov dl, %s\n" % b.value)
+        self.code.append(" add dh, dl\n")
+        self.stack.append(StackValue(StackValueType.REGISTER8, "dh"))
 
-    def append_bin_op(self, bin_op, a, b):
+    def add_i16(self, a, b):
+        self.code.append(" mov dx, %s\n" % a.value)
+        self.code.append(" mov bx, %s\n" % b.value)
+        self.code.append(" add dx, bx\n")
+        self.stack.append(StackValue(StackValueType.REGISTER16, "dx"))
 
-        if bin_op == TokenType.TOKEN_PLUS:
-            self.stack.append(StackValue(StackValueType.INT, int(a.value) + int(b.value)))
+    def add_i32(self, a, b):
+        self.code.append(" mov ebx, %s\n" % a.value)
+        self.code.append(" mov edx, %s\n" % b.value)
+        self.code.append(" add ebx, edx\n")
+        self.stack.append(StackValue(StackValueType.REGISTER32, "ebx"))
 
-        elif bin_op == TokenType.TOKEN_DASH:
-            self.stack.append(StackValue(StackValueType.INT, int(a.value) - int(b.value)))
+    def add_i64(self, a, b):
+        self.code.append(" mov rbx, %s\n" % a.value)
+        self.code.append(" mov rdx, %s\n" % b.value)
+        self.code.append(" add rbx, rdx\n")
+        self.stack.append(StackValue(StackValueType.REGISTER64, "rbx"))
 
-        elif bin_op == TokenType.TOKEN_STAR:
-            self.stack.append(StackValue(StackValueType.INT, int(a.value) * int(b.value)))
+    def sub_int_consts(self, a, b):
+        self.stack.append(StackValue(StackValueType.INT_CONST, str(int(a.value) - int(b.value))))
 
-        elif bin_op == TokenType.TOKEN_SLASH:
-            self.stack.append(StackValue(StackValueType.INT, int(a.value) / int(b.value)))
+    def sub_i8(self, a, b):
+        self.code.append(" mov dl, %s\n" % a.value)
+        self.code.append(" mov dh, %s\n" % b.value)
+        self.code.append(" sub dl, dh\n")
+        self.stack.append(StackValue(StackValueType.REGISTER8, "dl"))
+
+    def sub_i16(self, a, b):
+        self.code.append(" mov bx, %s\n" % a.value)
+        self.code.append(" mov dx, %s\n" % b.value)
+        self.code.append(" sub bx, dx\n")
+        self.stack.append(StackValue(StackValueType.REGISTER16, "bx"))
+
+    def sub_i32(self, a, b):
+        self.code.append(" mov edx, %s\n" % a.value)
+        self.code.append(" mov ebx, %s\n" % b.value)
+        self.code.append(" sub edx, ebx\n")
+        self.stack.append(StackValue(StackValueType.REGISTER32, "edx"))
+
+    def sub_i64(self, a, b):
+        self.code.append(" mov rdx, %s\n" % a.value)
+        self.code.append(" mov rbx, %s\n" % b.value)
+        self.code.append(" sub rdx, rbx\n")
+        self.stack.append(StackValue(StackValueType.REGISTER64, "rdx"))
+
+    def compile_sub_op(self, a, b):
+        if a.kind == StackValueType.INT_CONST:
+            if b.kind == StackValueType.INT_CONST:
+                self.sub_int_consts(a, b)
+            elif b.kind == StackValueType.INT8_VAR:
+                self.sub_i8(a, b)
+            elif b.kind == StackValueType.INT16_VAR:
+                self.sub_i16(a, b)
+            elif b.kind == StackValueType.INT32_VAR:
+                self.sub_i32(a, b)
+            elif b.kind == StackValueType.INT64_VAR:
+                self.sub_i64(a, b)
+        elif a.kind == StackValueType.REGISTER8 or a.kind == StackValueType.INT8_VAR:
+            if b.kind == StackValueType.INT_CONST or b.kind == StackValueType.INT8_VAR or b.kind == StackValueType.REGISTER8:
+                self.sub_i8(a, b)
+            else:
+                self.error("An I8 can only be subtracted by another I8 or Int Constant.")
+        elif a.kind == StackValueType.REGISTER16 or a.kind == StackValueType.INT16_VAR:
+            if b.kind == StackValueType.INT_CONST or b.kind == StackValueType.INT16_VAR or b.kind == StackValueType.REGISTER16:
+                self.sub_i16(a, b)
+            else:
+                self.error("An I16 can only be subtracted by another I16 or Int Constant.")
+        elif a.kind == StackValueType.REGISTER32 or a.kind == StackValueType.INT32_VAR:
+            if b.kind == StackValueType.INT_CONST or b.kind == StackValueType.INT32_VAR or b.kind == StackValueType.REGISTER32:
+                self.sub_i32(a, b)
+            else:
+                self.error("An I32 can only be subtracted by another I32 or Int Constant.")
+        elif a.kind == StackValueType.REGISTER64 or a.kind == StackValueType.INT64_VAR:
+            if b.kind == StackValueType.INT_CONST or b.kind == StackValueType.INT64_VAR or b.kind == StackValueType.REGISTER64:
+                self.sub_i64(a, b)
+            else:
+                self.error("An I64 can only be subtracted by another I64 or Int Constant.")
+
+    def compile_add_op(self, a, b):
+        if a.kind == StackValueType.INT_CONST:
+            if b.kind == StackValueType.INT_CONST:
+                self.add_int_consts(a, b)
+            elif b.kind == StackValueType.INT8_VAR:
+                self.add_i8(a, b)
+            elif b.kind == StackValueType.INT16_VAR:
+                self.add_i16(a, b)
+            elif b.kind == StackValueType.INT32_VAR:
+                self.add_i32(a, b)
+            elif b.kind == StackValueType.INT64_VAR:
+                self.add_i64(a, b)
+
+        elif a.kind == StackValueType.REGISTER8 or a.kind == StackValueType.INT8_VAR:
+            if b.kind == StackValueType.INT_CONST or b.kind == StackValueType.INT8_VAR or b.kind == StackValueType.REGISTER8:
+                self.add_i8(a, b)
+            else:
+                self.error("An I8 can only be added to another I8 or Int Constant.")
+
+        elif a.kind == StackValueType.REGISTER16 or a.kind == StackValueType.INT16_VAR:
+            if b.kind == StackValueType.INT_CONST or b.kind == StackValueType.INT16_VAR or b.kind == StackValueType.REGISTER16:
+                self.add_i16(a, b)
+            else:
+                self.error("An I16 can only be added to another I16 or Int Constant.")
+
+        elif a.kind == StackValueType.REGISTER32 or a.kind == StackValueType.INT32_VAR:
+            if b.kind == StackValueType.INT_CONST or b.kind == StackValueType.INT32_VAR or b.kind == StackValueType.REGISTER32:
+                self.add_i32(a, b)
+            else:
+                self.error("An I32 can only be added to another I32 or Int Constant.")
+
+        elif a.kind == StackValueType.REGISTER64 or a.kind == StackValueType.INT64_VAR:
+            if b.kind == StackValueType.INT_CONST or b.kind == StackValueType.INT64_VAR or b.kind == StackValueType.REGISTER64:
+                self.add_i64(a, b)
+            else:
+                self.error("An I64 can only be added to another I64 or Int Constant.")
 
     def compile(self, path):
-
-        if compiled_files.__contains__(path):
-            return
         self.walk_tree()
+        file = open(path, "w")
 
-        file = open(self.asm_path, "w")
-        file.write("bits 64\n")
-
-        text = [
-            "section .text\n",
-            "global main\n",
-            "extern ExitProcess\n",
-        ]
-        code = [
-            "main:\n",
-            " call boot\n"
-            " call ExitProcess\n"
-        ]
-        stack_alloc_line = 0
-        stack_dealloc_line = 0
-        data = []
-
+        setup_stack_idx = 0
         strings = {}
-        constants = 0
-        local_vars = {}
-        local_pos = 0
-        labels = 0
+        string_count = 0
+        calling_stack_offset = 0
 
-        for instruction in self.instructions:
-            if instruction.opcode == Opcode.START_PROC:
-                local_pos = 0
-                local_vars.clear()
-                code.append("%s:\n" % instruction.value)
-                code.append(" push rbp\n")
-                code.append(" mov rbp, rsp\n")
+        for ip in range(0, len(self.instructions)):
+            instr = self.instructions[ip]
 
-            elif instruction.opcode == Opcode.END_PROC:
-                # We will now start optimizations on the current function.
-                local_pos = 0
-                marked = []
+            if instr.opcode == Opcode.START_PROC:
+                self.vars.clear()
+                self.stack_offset = 0
+                self.var_address_ptr = 0
+                self.code.append("%s:\n" % instr.value)
 
-                for variable in local_vars:
-                    var = local_vars[variable]
-                    if not var.using:
-                        code[var.line] = ""
-                    else:
-                        marked.append(variable)
+            elif instr.opcode == Opcode.START_PUB_PROC:
+                self.code.append("%s:\n" % instr.value)
+                self.setup.append("global %s\n" % instr.value)
 
-                for variable in marked:
-                    var = local_vars[variable]
-                    local_pos += 8
-                    code[var.line] = code[var.line].replace("#", "%s" % hex(local_pos))
+            elif instr.opcode == Opcode.SETUP_STACK:
+                setup_stack_idx = len(self.code)
+                self.code.append(" push rbp\n")
+                self.code.append(" mov rbp, rsp\n")
+                self.code.append(" sub rsp, #\n")
 
-                    # Loop the lines that the variable is used at and update them.
-                    for line in var.used_lines:
-                        code[line] = code[line].replace("#", "%s" % hex(local_pos))
+            elif instr.opcode == Opcode.SET_COMPILING_VAR:
+                # This will be used in the future for type checking.
+                pass
 
-                code[stack_alloc_line] = code[stack_alloc_line].replace("#", "%s" % hex(32 + local_pos))
-                code[stack_dealloc_line] = code[stack_dealloc_line].replace("#", "%s" % hex(32 + local_pos))
+            elif instr.opcode == Opcode.CLOSE_STACK:
+                if self.stack_offset <= 0:
+                    for i in range(0, 3):
+                        self.code.pop(setup_stack_idx)
+                    continue
+                sub_idx = setup_stack_idx + 2
+                self.code[sub_idx] = self.code[sub_idx].replace("#", "%s" % hex(32 + self.stack_offset))
+                self.code.append(" leave\n")
 
-                code.append(" leave\n")
-                code.append(" ret\n")
+            elif instr.opcode == Opcode.MOV_INT_CONST:
+                self.stack.append(StackValue(StackValueType.INT_CONST, instr.value))
 
-            elif instruction.opcode == Opcode.RES_STACK_PTR:
-                code.append("L%s:\n" % labels)
-                stack_dealloc_line = len(code)
-                code.append(" add rsp, #\n")  # Deallocate shadowspace.
+            elif instr.opcode == Opcode.MOV_UNSIGNED_INT_CONST:
+                self.stack.append(StackValue(StackValueType.INT_CONST, int("-%s" % instr.value) + 2 ** 32))
 
-            elif instruction.opcode == Opcode.ALLOC_BYTES:
-                stack_alloc_line = len(code)
-                code.append(" sub rsp, #\n")  # Allocate shadowspace.
+            elif instr.opcode == Opcode.NOT:
+                stack_value = int(self.pop_stack().value)
+                self.stack.append(StackValue(StackValueType.INT_CONST, str(0 if stack_value < 0 or stack_value > 0 else 1)))
 
-            elif instruction.opcode == Opcode.EXTERN:
-                text.append("extern %s\n" % instruction.value)
+            elif instr.opcode == Opcode.ADD:
+                b = self.pop_stack()
+                a = self.pop_stack()
+                self.compile_add_op(a, b)
 
-            elif instruction.opcode == Opcode.ENDIF:
-                if_ip = self.branch_stack.pop()
-                label = "L%s" % labels
-                code[if_ip] = code[if_ip].replace("#", label)
+            elif instr.opcode == Opcode.SUB:
+                b = self.pop_stack()
+                a = self.pop_stack()
+                self.compile_sub_op(a, b)
 
-            elif instruction.opcode == Opcode.COMPARE_OP:
-                code.append(" cmp rcx, rdx\n")
-                label = "L%s" % labels
-                if instruction.token.tok_type == TokenType.TOKEN_ISEQ:
-                    code.append(" je %s\n" % label)
-                self.branch_stack.append(len(code))
-                code.append(" jmp #\n")
-                self.reset_registers()
-
-            elif instruction.opcode == Opcode.LABEL:
-                code.append("L%s:\n" % labels)
-                labels += 1
-
-            elif instruction.opcode == Opcode.BINARY_OP:
-                b = self.stack.pop()
-                a = self.stack.pop()
-
-                bin_op = instruction.token.tok_type
-                self.append_bin_op(bin_op, a, b)
-
-            elif instruction.opcode == Opcode.MOV_IMMI:
-                self.stack.append(StackValue(StackValueType.INT, instruction.value))
-
-            elif instruction.opcode == Opcode.STORE_INT:
-                local_pos += 8
-                variable = Variable(instruction.value, local_pos, 0, len(code))
+            elif instr.opcode == Opcode.RETURN:
                 if self.stack:
-                    stack_value = self.stack.pop()
-                    code.append(" mov dword [rbp - #], %s ; int %s\n" % (hex(int(stack_value.value)), variable.name))
-                    variable.value = stack_value.value
-                local_vars[instruction.value] = variable
-                self.reset_registers()
-
-            elif instruction.opcode == Opcode.MOV_IMMS:
-                if not strings.__contains__(instruction.value):
-                    string_const = "lc%s" % constants
-                    strings[instruction.value] = string_const
-                    data.append("%s: db `%s`, 0\n" % (string_const, instruction.value))
-                    register = self.registers.pop()
-                    code.append(" mov %s, %s\n" % (register, string_const))
-                    constants += 1
+                    self.emit_mov("rax")
                 else:
-                    string_const = strings[instruction.value]
-                    register = self.registers.pop()
-                    code.append(" mov %s, %s\n" % (register, string_const))
+                    self.code.append(" ret\n")
 
-            elif instruction.opcode == Opcode.LOAD_CONST:
-                const = StackValue(StackValueType.REF, local_vars[instruction.value].value)
-                const.ptr = local_vars[instruction.value].ptr
-                const.name = instruction.value
-                self.stack.append(const)
+            elif instr.opcode == Opcode.STORE_INT8:
+                self.emit_var(instr.value, 1, StackValueType.INT8_VAR, "byte")
 
-            elif instruction.opcode == Opcode.CALL:
-                code.append(" call %s\n" % instruction.value)
+            elif instr.opcode == Opcode.STORE_INT16:
+                self.emit_var(instr.value, 2, StackValueType.INT16_VAR, "word")
+
+            elif instr.opcode == Opcode.STORE_INT32:
+                self.emit_var(instr.value, 4, StackValueType.INT32_VAR, "dword")
+
+            elif instr.opcode == Opcode.STORE_INT64:
+                self.emit_var(instr.value, 8, StackValueType.INT64_VAR, "qword")
+
+            elif instr.opcode == Opcode.LOAD_STRING:
+                if instr.value not in strings:
+                    string = "str%s" % string_count
+                    self.data.append("%s: db \"%s\", 0\n" % (string, instr.value))
+                    strings[instr.value] = string
+                    self.stack.append(StackValue(StackValueType.STRING_CONST, string))
+                else:
+                    raise Exception("Not handled yet")
+
+            elif instr.opcode == Opcode.EXTERN:
+                self.setup.append("extern %s\n" % instr.value)
+
+            elif instr.opcode == Opcode.CALL:
+                self.code.append(" call %s\n" % instr.value)
+                if instr.value in self.functions and self.functions[instr.value].kind is not None:
+                    self.stack.append(StackValue(StackValueType.RETURN_VALUE))
                 self.reset_registers()
+                calling_stack_offset = 0
 
-            elif instruction.opcode == Opcode.INCLUDE:
-                if not compiled_files.__contains__("%s.myl" % instruction.value):
-                    include_path = "%s.myl" % instruction.value
+            elif instr.opcode == Opcode.LOAD_VAR:
+                var = self.vars[instr.value]
+                self.stack.append(StackValue(var.kind, var.ptr, var.ptr))
 
-                    parser = Parser(Lexer("%s" % include_path))
-                    parser.parse_advance()
+            elif instr.opcode == Opcode.PUSH_ARGUMENT:
+                register = self.emit_mov()
 
-                    compiler = Compiler(include_path.replace(".myl", ".asm"), parser)
-                    compiler.compile(include_path)
+                # Move the arguments on the stack.
+                if register == "rax" or register == "eax":
+                    self.code.append(" mov [rsp + %s], %s\n" % (hex(32 + calling_stack_offset), register))
+                    calling_stack_offset += 8
 
-                data.append("%include \"%s.asm\"" % instruction.value)
+            elif instr.opcode == Opcode.END_PROC:
 
-            elif instruction.opcode == Opcode.MOV_TO_REG:
-                # Only push argument if its on the stack. This will account for numbers.
-                if self.stack:
-                    stack_value = self.stack.pop()
-                    if stack_value.val_type == StackValueType.REF:
-                        local_vars[stack_value.name].using = True
-                        local_vars[stack_value.name].used_lines.append(len(code))
-                        code.append(" mov %s, [rbp - #] ; %s\n" % (self.registers.pop(), local_vars[stack_value.name].name))
-                    else:
-                        code.append(" mov %s, %s\n" % (self.registers.pop(), hex(int(stack_value.value))))
+                # If the last code was 'ret', don't emit ret again.
+                if "ret" not in self.code[len(self.code) - 1]:
+                    self.code.append(" ret\n")
 
-        if len(data) > 0:
-            file.write("section .data\n")
-            self.write_section(file, data)
+        file.writelines(self.setup)
+        file.write("\n")
 
-        self.write_section(file, text)
-        self.write_section(file, code)
+        if len(self.data) > 0:
+            file.write("SECTION .data\n")
+            file.writelines(self.data)
+            file.write("\n")
+
+        file.writelines(self.code)
+        file.write("\n")
         file.close()
-
-        compiled_files[path] = True

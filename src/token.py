@@ -34,16 +34,22 @@ class TokenType(enum.IntEnum):
     TOKEN_BITWISE_OR = 27
     TOKEN_BITWISE_AND = 28
     TOKEN_NOT = 29
-    TOKEN_INT = 30
-    TOKEN_DOUBLE = 31
-    TOKEN_FLOAT = 32
-    TOKEN_TYPE_DEFINE = 33
-    TOKEN_EXTERN = 34
-    TOKEN_INCLUDE = 35
+    TOKEN_INT8 = 30
+    TOKEN_INT16 = 31
+    TOKEN_INT32 = 32
+    TOKEN_INT64 = 33
+    TOKEN_DOUBLE = 34
+    TOKEN_FLOAT = 35
+    TOKEN_COLON = 36
+    TOKEN_EXTERN = 37
+    TOKEN_INCLUDE = 38
+    TOKEN_RETURN = 39
+    TOKEN_PUB = 40
+    TOKEN_QUESTION = 41
 
 
 class Token:
 
     def __init__(self, _type, _data):
-        self.tok_type = _type
+        self.kind = _type
         self.data = _data

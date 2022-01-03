@@ -1,24 +1,8 @@
 extern printf
 
-def boot()
-  int x = 10
-  int c = 20
-  int f = 60 + 60
-  if x == 10 then
-    printf("Hi\n")
-
-    if c == 20 then
-      printf("c is 30\n")
-
-      if f == 110 then
-        printf("f is 120\n")
-      end
-
-      printf("sick\n")
-    end
-
-    printf("hey again\n")
-  end
-
-  printf("fark")
+pub def main()
+  i64 notcool = 50 - 20
+  i64 cool = 100 - notcool + 2 + 100 - 10 - 2
+  printf("%d", cool)
+  return 0
 end
