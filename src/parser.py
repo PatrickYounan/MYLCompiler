@@ -87,17 +87,12 @@ class LiteralExpression(Node):
     def eval(self, compiler):
         if self.token.kind == TokenType.TOKEN_DIGIT:
             compiler.add(Instruction(Opcode.MOV_INT_CONST, self.token, self.token.data if compiler.state != "-" else "-%s" % self.token.data))
-            return True
         elif self.token.kind == TokenType.TOKEN_IDENTIFIER and self.token.data != "_":
             compiler.add(Instruction(Opcode.LOAD_VAR, self.token, self.token.data))
-            return True
         elif self.token.kind == TokenType.TOKEN_STRING:
             compiler.add(Instruction(Opcode.LOAD_STRING, self.token, self.token.data))
-            return True
         elif self.token.kind == TokenType.TOKEN_DECIMAL:
             compiler.add(Instruction(Opcode.MOV_FLOAT_CONST, self.token, self.token.data if compiler.state != "-" else "-%s" % self.token.data))
-            return True
-        return False
 
 
 class VarStatement(Node):
