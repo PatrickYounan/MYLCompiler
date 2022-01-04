@@ -226,6 +226,7 @@ class WhenStatement(Node):
         self.cases = cases
 
     def eval(self, compiler):
+        compiler.case_token = self.identifier
         compiler.add(Instruction(Opcode.WHEN))
         marked = []
 
@@ -239,6 +240,7 @@ class WhenStatement(Node):
 
         for mark in marked:
             compiler.instructions[mark].value = "%s" % compiler.address
+        compiler.case_token = None
 
 
 class CaseStatement(Node):
@@ -249,7 +251,7 @@ class CaseStatement(Node):
 
     def eval(self, compiler):
         self.literal.eval(compiler)
-        compiler.add(Instruction(Opcode.CASE))
+        compiler.add(Instruction(Opcode.CASE, compiler.case_token, compiler.case_token.data))
         compiler.address += 2
         self.statement.eval(compiler)
 

@@ -1,7 +1,7 @@
 extern printf
 
 pub def main()
-  i64 value = 30
+  i32 value = 10
 
   when value
     10 => printf("Hi\n")

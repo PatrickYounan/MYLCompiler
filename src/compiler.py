@@ -99,6 +99,7 @@ class Compiler:
         self.data = []
         self.labels = 0
         self.address = 0
+        self.case_token = None
 
     def error(self, message):
         raise Exception(message)
@@ -162,10 +163,9 @@ class Compiler:
         self.code.append("L%s:\n" % self.labels)
         self.labels += 1
 
-    def emit_cmp(self, register="?"):
+    def emit_cmp(self, register):
         stack_value = self.pop_stack()
-        value = stack_value.value
-        self.code.append(" cmp %s, %s\n" % (register, value))
+        self.code.append(" cmp %s, %s\n" % (register, stack_value.value))
 
     def emit_mov(self, register="?"):
         stack_value = self.pop_stack()
@@ -189,11 +189,17 @@ class Compiler:
             self.movq(register, "xmm0")
             return register
 
-        elif (stack_value.kind == StackValueType.INT32_VAR) and register != "eax":
+        elif (stack_value.kind == StackValueType.INT32_VAR) and register != "eax" and register != "32":
             register = self.pop_register(32)
 
-        elif (stack_value.kind == StackValueType.INT64_VAR or stack_value.kind == StackValueType.INT_CONST or stack_value.kind == StackValueType.STRING_CONST) and register != "rax":
+        elif (stack_value.kind == StackValueType.INT64_VAR or stack_value.kind == StackValueType.STRING_CONST) and register != "rax" and register != "64":
             register = self.pop_register(64)
+
+        elif stack_value.kind == StackValueType.INT_CONST:
+            if register == "64":
+                register = self.pop_register(64)
+            elif register == "32":
+                register = self.pop_register(32)
 
         self.mov(register, value)
         return register
@@ -572,9 +578,15 @@ class Compiler:
                     self.code.append(" ret\n")
 
             elif instr.opcode == Opcode.CASE:
+                var = self.vars[instr.value]
+
                 self.emit_label()
-                self.emit_mov()
-                self.emit_cmp("rcx")
+                register = ""
+                if var.kind == StackValueType.INT32_VAR:
+                    register = self.emit_mov("32")
+                elif var.kind == StackValueType.INT64_VAR:
+                    register = self.emit_mov("64")
+                self.emit_cmp(register)
                 self.code.append(" je L%s\n" % self.labels)
                 self.code.append(" jmp L%s\n" % (self.labels + 1))
                 self.emit_label()
