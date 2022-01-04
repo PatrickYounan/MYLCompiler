@@ -30,6 +30,10 @@ class Opcode(enum.IntEnum):
     DIV = 22
     STORE_FLOAT64 = 23
     MOV_FLOAT_CONST = 24
+    WHEN = 25
+    CASE = 26
+    END = 27
+    JUMP = 28
 
 
 class StackValueType(enum.IntEnum):
@@ -93,6 +97,8 @@ class Compiler:
         self.code = ["SECTION .text\n"]
         self.setup = []
         self.data = []
+        self.labels = 0
+        self.address = 0
 
     def error(self, message):
         raise Exception(message)
@@ -152,6 +158,15 @@ class Compiler:
 
         return stack_value
 
+    def emit_label(self):
+        self.code.append("L%s:\n" % self.labels)
+        self.labels += 1
+
+    def emit_cmp(self, register="?"):
+        stack_value = self.pop_stack()
+        value = stack_value.value
+        self.code.append(" cmp %s, %s\n" % (register, value))
+
     def emit_mov(self, register="?"):
         stack_value = self.pop_stack()
         value = stack_value.value
@@ -204,7 +219,6 @@ class Compiler:
             node = self.parser.parse_statement()
             if node is None:
                 break
-            print(node)
             node.eval(self)
 
     def add_int_consts(self, a, b):
@@ -556,6 +570,24 @@ class Compiler:
                     function.has_return_value = True
                 else:
                     self.code.append(" ret\n")
+
+            elif instr.opcode == Opcode.CASE:
+                self.emit_label()
+                self.emit_mov()
+                self.emit_cmp("rcx")
+                self.code.append(" je L%s\n" % self.labels)
+                self.code.append(" jmp L%s\n" % (self.labels + 1))
+                self.emit_label()
+                self.reset_registers()
+
+            elif instr.opcode == Opcode.END:
+                self.emit_label()
+
+            elif instr.opcode == Opcode.WHEN:
+                pass
+
+            elif instr.opcode == Opcode.JUMP:
+                self.code.append(" jmp L%s\n" % instr.value)
 
             elif instr.opcode == Opcode.STORE_INT8:
                 self.emit_var(instr.value, 1, StackValueType.INT8_VAR, "byte")

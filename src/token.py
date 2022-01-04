@@ -48,6 +48,9 @@ class TokenType(enum.IntEnum):
     TOKEN_QUESTION = 41
     TOKEN_FLOAT64 = 42
     TOKEN_DECIMAL = 45
+    TOKEN_WHEN = 46
+    TOKEN_EQGT = 47
+    TOKEN_DO = 48
 
 
 class Token:

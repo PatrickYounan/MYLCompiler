@@ -1,6 +1,13 @@
 extern printf
 
 pub def main()
-  f64 result = 10.6
-  printf("%f", result)
+  i64 value = 30
+
+  when value
+    10 => printf("Hi\n")
+    20 => printf("cool\n")
+    30 => printf("sick\n")
+  end
+
+  printf("Completed")
 end

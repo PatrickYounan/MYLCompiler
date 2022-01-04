@@ -68,6 +68,10 @@ class Lexer:
             return Token(TokenType.TOKEN_RETURN, identifier)
         elif identifier == "pub":
             return Token(TokenType.TOKEN_PUB, identifier)
+        elif identifier == "when":
+            return Token(TokenType.TOKEN_WHEN, identifier)
+        elif identifier == "do":
+            return Token(TokenType.TOKEN_DO, identifier)
 
         return Token(TokenType.TOKEN_IDENTIFIER, identifier)
 
@@ -121,7 +125,7 @@ class Lexer:
                 return self.new_token_advance(TokenType.TOKEN_DOT, ".", 1)
             elif self.head == '=':
                 self.peek_char()
-                return self.new_token_advance(TokenType.TOKEN_ISEQ, "==", 2) if self.peek == '=' else self.new_token_advance(TokenType.TOKEN_EQ, "=", 1)
+                return self.new_token_advance(TokenType.TOKEN_ISEQ, "==", 2) if self.peek == '=' else self.new_token_advance(TokenType.TOKEN_EQGT, "=>", 2) if self.peek == '>' else self.new_token_advance(TokenType.TOKEN_EQ, "=", 1)
             elif self.head == "!":
                 self.peek_char()
                 return self.new_token_advance(TokenType.TOKEN_ISNEQ, "!=", 2) if self.peek == '=' else self.new_token_advance(TokenType.TOKEN_NOT, "!", 1)

@@ -209,6 +209,51 @@ class ReturnStatement(Node):
         compiler.add(Instruction(Opcode.RETURN))
 
 
+class BlockStatement(Node):
+
+    def __init__(self, statements):
+        self.statements = statements
+
+    def eval(self, compiler):
+        for statement in self.statements:
+            statement.eval(compiler)
+
+
+class WhenStatement(Node):
+
+    def __init__(self, identifier, cases):
+        self.identifier = identifier
+        self.cases = cases
+
+    def eval(self, compiler):
+        compiler.add(Instruction(Opcode.WHEN))
+        marked = []
+
+        for case in self.cases:
+            compiler.add(Instruction(Opcode.LOAD_VAR, self.identifier, self.identifier.data))
+            case.eval(compiler)
+
+            marked.append(len(compiler.instructions))
+            compiler.add(Instruction(Opcode.JUMP))
+        compiler.add(Instruction(Opcode.END))
+
+        for mark in marked:
+            compiler.instructions[mark].value = "%s" % compiler.address
+
+
+class CaseStatement(Node):
+
+    def __init__(self, literal, statement):
+        self.literal = literal
+        self.statement = statement
+
+    def eval(self, compiler):
+        self.literal.eval(compiler)
+        compiler.add(Instruction(Opcode.CASE))
+        compiler.address += 2
+        self.statement.eval(compiler)
+
+
 class Parser:
 
     def __init__(self, lexer):
@@ -305,12 +350,31 @@ class Parser:
         self.parse_advance()
         return IncludeStatement(self.parse_advance(TokenType.TOKEN_STRING))
 
+    def parse_when_statement(self):
+        self.parse_advance()
+        identifier = self.parse_advance(TokenType.TOKEN_IDENTIFIER)
+        cases = []
+
+        while not self.parse_match(TokenType.TOKEN_END):
+            literal = self.parse_literal()
+            self.parse_advance(TokenType.TOKEN_EQGT)
+            statement = self.parse_statement()
+            cases.append(CaseStatement(literal, statement))
+
+        self.parse_advance()
+        return WhenStatement(identifier, cases)
+
     def parse_return_statement(self):
         self.parse_advance()
         expression = None
         if not self.parse_match(TokenType.TOKEN_END):
             expression = self.parse_expression()
         return ReturnStatement(expression)
+
+    def parse_do_statement(self):
+        self.parse_advance()
+        block = self.parse_block_statement([TokenType.TOKEN_END])
+        return BlockStatement(block)
 
     def parse_statement(self):
         if not self.token or self.token.kind == TokenType.TOKEN_EOF:
@@ -336,6 +400,10 @@ class Parser:
             return self.parse_include_statement()
         elif self.parse_match(TokenType.TOKEN_RETURN):
             return self.parse_return_statement()
+        elif self.parse_match(TokenType.TOKEN_WHEN):
+            return self.parse_when_statement()
+        elif self.parse_match(TokenType.TOKEN_DO):
+            return self.parse_do_statement()
         return None
 
     def parse_literal(self):
