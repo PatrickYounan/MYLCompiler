@@ -34,6 +34,7 @@ class Opcode(enum.IntEnum):
     CASE = 26
     END = 27
     JUMP = 28
+    DEFAULT_CASE = 29
 
 
 class StackValueType(enum.IntEnum):
@@ -121,7 +122,6 @@ class Compiler:
     def pop_register(self, required):
         if not self.registers_32bit or not self.registers_64bit:
             return "rax" if required == 64 else "eax"
-
         bit32 = self.pop_32bit_arg_register()
         bit64 = self.pop_64bit_arg_register()
         return bit64 if required == 64 else bit32
@@ -144,9 +144,7 @@ class Compiler:
     def pop_stack(self) -> StackValue:
         stack_value = self.stack.pop()
 
-        if stack_value.kind == StackValueType.INT_CONST:
-            return stack_value
-        elif stack_value.kind == StackValueType.INT8_VAR:
+        if stack_value.kind == StackValueType.INT8_VAR:
             return StackValue(StackValueType.INT8_VAR, "byte [rsp - %s]" % stack_value.value, stack_value.ptr)
         elif stack_value.kind == StackValueType.INT16_VAR:
             return StackValue(StackValueType.INT16_VAR, "word [rsp - %s]" % stack_value.value, stack_value.ptr)
@@ -156,7 +154,6 @@ class Compiler:
             return StackValue(StackValueType.INT64_VAR, "qword [rsp - %s]" % stack_value.value, stack_value.ptr)
         elif stack_value.kind == StackValueType.FLOAT_VAR:
             return StackValue(StackValueType.FLOAT_VAR, "dword [rsp - %s]" % stack_value.value, stack_value.ptr)
-
         return stack_value
 
     def emit_label(self):
@@ -164,6 +161,8 @@ class Compiler:
         self.labels += 1
 
     def emit_cmp(self, register):
+        if not self.stack:
+            return
         stack_value = self.pop_stack()
         self.code.append(" cmp %s, %s\n" % (register, stack_value.value))
 
@@ -576,6 +575,10 @@ class Compiler:
                     function.has_return_value = True
                 else:
                     self.code.append(" ret\n")
+
+            elif instr.opcode == Opcode.DEFAULT_CASE:
+                self.emit_label()
+                self.reset_registers()
 
             elif instr.opcode == Opcode.CASE:
                 var = self.vars[instr.value]

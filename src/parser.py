@@ -87,12 +87,17 @@ class LiteralExpression(Node):
     def eval(self, compiler):
         if self.token.kind == TokenType.TOKEN_DIGIT:
             compiler.add(Instruction(Opcode.MOV_INT_CONST, self.token, self.token.data if compiler.state != "-" else "-%s" % self.token.data))
-        elif self.token.kind == TokenType.TOKEN_IDENTIFIER:
+            return True
+        elif self.token.kind == TokenType.TOKEN_IDENTIFIER and self.token.data != "_":
             compiler.add(Instruction(Opcode.LOAD_VAR, self.token, self.token.data))
+            return True
         elif self.token.kind == TokenType.TOKEN_STRING:
             compiler.add(Instruction(Opcode.LOAD_STRING, self.token, self.token.data))
+            return True
         elif self.token.kind == TokenType.TOKEN_DECIMAL:
             compiler.add(Instruction(Opcode.MOV_FLOAT_CONST, self.token, self.token.data if compiler.state != "-" else "-%s" % self.token.data))
+            return True
+        return False
 
 
 class VarStatement(Node):
@@ -243,6 +248,16 @@ class WhenStatement(Node):
         compiler.case_token = None
 
 
+class DefaultCaseStatement(Node):
+    def __init__(self, statement):
+        self.statement = statement
+
+    def eval(self, compiler):
+        compiler.add(Instruction(Opcode.DEFAULT_CASE, compiler.case_token, compiler.case_token.data))
+        compiler.address += 1
+        self.statement.eval(compiler)
+
+
 class CaseStatement(Node):
 
     def __init__(self, literal, statement):
@@ -356,12 +371,21 @@ class Parser:
         self.parse_advance()
         identifier = self.parse_advance(TokenType.TOKEN_IDENTIFIER)
         cases = []
-
+        default_cases = 0
         while not self.parse_match(TokenType.TOKEN_END):
             literal = self.parse_literal()
             self.parse_advance(TokenType.TOKEN_EQGT)
             statement = self.parse_statement()
-            cases.append(CaseStatement(literal, statement))
+
+            if literal.token.kind == TokenType.TOKEN_IDENTIFIER and literal.token.data == '_':
+                cases.append(DefaultCaseStatement(statement))
+                default_cases += 1
+                if default_cases > 1:
+                    raise Exception("When statement can only support one default case.")
+            else:
+                if default_cases >= 1:
+                    raise Exception("Default case has to be added last.")
+                cases.append(CaseStatement(literal, statement))
 
         self.parse_advance()
         return WhenStatement(identifier, cases)
