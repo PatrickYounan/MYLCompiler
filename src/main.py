@@ -1,4 +1,4 @@
-from src.compiler import *
+from src.compiler import Compiler
 from src.lexer import *
 from src.parser import *
 import os

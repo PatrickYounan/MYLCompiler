@@ -12,8 +12,6 @@ pub def main()
     else
       printf("age is not 4\n")
     end
-
-    printf("done value 2\n")
   else
     printf("%d\n", value)
 

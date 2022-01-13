@@ -1,5 +1,3 @@
-import math
-from enum import Enum
 from token import *
 import ctypes
 
@@ -30,11 +28,12 @@ class Opcode(enum.IntEnum):
     DIV = 22
     STORE_FLOAT64 = 23
     MOV_FLOAT_CONST = 24
-    WHEN = 25
-    CASE = 26
-    END = 27
-    JUMP = 28
-    DEFAULT_CASE = 29
+    CMP = 25
+    IF = 26
+    ENDIF = 27
+    JMPEQ = 28
+    JMP = 29
+    ELSE = 30
 
 
 class StackValueType(enum.IntEnum):
@@ -99,8 +98,7 @@ class Compiler:
         self.setup = []
         self.data = []
         self.labels = 0
-        self.address = 0
-        self.case_token = None
+        self.last_type = None
 
     def error(self, message):
         raise Exception(message)
@@ -155,16 +153,6 @@ class Compiler:
         elif stack_value.kind == StackValueType.FLOAT_VAR:
             return StackValue(StackValueType.FLOAT_VAR, "dword [rsp - %s]" % stack_value.value, stack_value.ptr)
         return stack_value
-
-    def emit_label(self):
-        self.code.append("L%s:\n" % self.labels)
-        self.labels += 1
-
-    def emit_cmp(self, register):
-        if not self.stack:
-            return
-        stack_value = self.pop_stack()
-        self.code.append(" cmp %s, %s\n" % (register, stack_value.value))
 
     def emit_mov(self, register="?"):
         stack_value = self.pop_stack()
@@ -228,6 +216,15 @@ class Compiler:
 
     def add_int_consts(self, a, b):
         self.stack.append(StackValue(StackValueType.INT_CONST, str(int(a.value) + int(b.value))))
+
+    def get_register_for_type(self, value):
+        if value.kind == StackValueType.INT32_VAR:
+            return self.pop_register(32)
+        elif value.kind == StackValueType.INT64_VAR:
+            return self.pop_register(64)
+        elif value.kind == StackValueType.INT_CONST:
+            return value.value
+        raise Exception("Unsupported kind.")
 
     def add_i8(self, a, b):
         self.mov("ah", a.value)
@@ -337,6 +334,13 @@ class Compiler:
         self.mov("rbx", b.value)
         self.code.append(" idiv rbx\n")
         self.stack.append(StackValue(StackValueType.REGISTER64, "rax"))
+
+    def emit_cmp(self, a, b):
+        register_a = self.get_register_for_type(a)
+        register_b = self.get_register_for_type(b)
+        self.mov(register_a, a.value)
+        self.mov(register_b, b.value)
+        self.code.append(" cmp %s, %s\n" % (register_a, register_b))
 
     def compile_div_op(self, a, b):
         if a.kind == StackValueType.INT_CONST:
@@ -474,6 +478,11 @@ class Compiler:
             else:
                 self.error("An I64 can only be multiplied by another I64 or Int Constant.")
 
+    def gen_label(self):
+        label = "L%s" % self.labels
+        self.labels += 1
+        return label
+
     def compile(self, path):
         self.walk_tree()
         file = open(path, "w")
@@ -537,13 +546,29 @@ class Compiler:
 
             elif instr.opcode == Opcode.NOT:
                 stack_value = int(self.pop_stack().value)
-                self.stack.append(StackValue(StackValueType.INT_CONST, str(0 if stack_value < 0 or stack_value > 0 else 1)))
+                self.stack.append(
+                    StackValue(StackValueType.INT_CONST, str(0 if stack_value < 0 or stack_value > 0 else 1)))
 
             elif instr.opcode == Opcode.ADD:
                 b = self.pop_stack()
                 a = self.pop_stack()
                 print("%s %s" % (a.value, b.value))
                 self.compile_add_op(a, b)
+
+            elif instr.opcode == Opcode.JMPEQ:
+                self.code.append(" je %s\n" % instr.value)
+
+            elif instr.opcode == Opcode.JMP:
+                self.code.append(" jmp %s\n" % instr.value)
+
+            elif instr.opcode == Opcode.IF:
+                self.code.append("%s:\n" % instr.value)
+
+            elif instr.opcode == Opcode.ELSE:
+                self.code.append("%s:\n" % instr.value)
+
+            elif instr.opcode == Opcode.ENDIF:
+                self.code.append("%s:\n" % instr.value)
 
             elif instr.opcode == Opcode.SUB:
                 b = self.pop_stack()
@@ -560,6 +585,12 @@ class Compiler:
                 a = self.pop_stack()
                 self.compile_div_op(a, b)
 
+            elif instr.opcode == Opcode.CMP:
+                b = self.pop_stack()
+                a = self.pop_stack()
+                self.emit_cmp(a, b)
+                self.reset_registers()
+
             elif instr.opcode == Opcode.RETURN:
                 if self.stack:
                     if function.kind is None:
@@ -575,34 +606,6 @@ class Compiler:
                     function.has_return_value = True
                 else:
                     self.code.append(" ret\n")
-
-            elif instr.opcode == Opcode.DEFAULT_CASE:
-                self.emit_label()
-                self.reset_registers()
-
-            elif instr.opcode == Opcode.CASE:
-                var = self.vars[instr.value]
-
-                self.emit_label()
-                register = ""
-                if var.kind == StackValueType.INT32_VAR:
-                    register = self.emit_mov("32")
-                elif var.kind == StackValueType.INT64_VAR:
-                    register = self.emit_mov("64")
-                self.emit_cmp(register)
-                self.code.append(" je L%s\n" % self.labels)
-                self.code.append(" jmp L%s\n" % (self.labels + 1))
-                self.emit_label()
-                self.reset_registers()
-
-            elif instr.opcode == Opcode.END:
-                self.emit_label()
-
-            elif instr.opcode == Opcode.WHEN:
-                pass
-
-            elif instr.opcode == Opcode.JUMP:
-                self.code.append(" jmp L%s\n" % instr.value)
 
             elif instr.opcode == Opcode.STORE_INT8:
                 self.emit_var(instr.value, 1, StackValueType.INT8_VAR, "byte")

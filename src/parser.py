@@ -1,7 +1,7 @@
-from src.token import *
-from src.compiler import Compiler, Instruction, Opcode, Function
 from abc import ABC, abstractmethod
-from llvmlite import ir, binding
+
+from src.compiler import Instruction, Opcode, Function
+from src.token import *
 
 
 class Node(ABC):
@@ -41,7 +41,9 @@ class CompareExpression(Node):
         self.operator = operator
 
     def eval(self, compiler):
-        pass
+        self.left.eval(compiler)
+        self.right.eval(compiler)
+        compiler.add(Instruction(Opcode.CMP))
 
 
 class BinaryExpression(Node):
@@ -86,13 +88,15 @@ class LiteralExpression(Node):
 
     def eval(self, compiler):
         if self.token.kind == TokenType.TOKEN_DIGIT:
-            compiler.add(Instruction(Opcode.MOV_INT_CONST, self.token, self.token.data if compiler.state != "-" else "-%s" % self.token.data))
+            compiler.add(Instruction(Opcode.MOV_INT_CONST, self.token,
+                                     self.token.data if compiler.state != "-" else "-%s" % self.token.data))
         elif self.token.kind == TokenType.TOKEN_IDENTIFIER and self.token.data != "_":
             compiler.add(Instruction(Opcode.LOAD_VAR, self.token, self.token.data))
         elif self.token.kind == TokenType.TOKEN_STRING:
             compiler.add(Instruction(Opcode.LOAD_STRING, self.token, self.token.data))
         elif self.token.kind == TokenType.TOKEN_DECIMAL:
-            compiler.add(Instruction(Opcode.MOV_FLOAT_CONST, self.token, self.token.data if compiler.state != "-" else "-%s" % self.token.data))
+            compiler.add(Instruction(Opcode.MOV_FLOAT_CONST, self.token,
+                                     self.token.data if compiler.state != "-" else "-%s" % self.token.data))
 
 
 class VarStatement(Node):
@@ -122,7 +126,8 @@ class ElseStatement(Node):
         self.block = block
 
     def eval(self, compiler):
-        pass
+        for statement in self.block:
+            statement.eval(compiler)
 
 
 class IfStatement(Node):
@@ -133,7 +138,38 @@ class IfStatement(Node):
         self.else_block = else_block
 
     def eval(self, compiler):
-        pass
+        self.condition.eval(compiler)
+
+        then_label = compiler.gen_label()
+        else_label = ""
+
+        jumped_end = True
+
+        if self.else_block:
+            else_label = compiler.gen_label()
+        end_label = compiler.gen_label()
+
+        compiler.add(Instruction(Opcode.JMPEQ, None, then_label))
+
+        if not self.else_block:
+            compiler.add(Instruction(Opcode.JMP, None, end_label))
+        else:
+            jumped_end = False
+            compiler.add(Instruction(Opcode.JMP, None, else_label))
+
+        compiler.add(Instruction(Opcode.IF, None, then_label))
+
+        for statement in self.then_block:
+            statement.eval(compiler)
+
+        if not jumped_end:
+            compiler.add(Instruction(Opcode.JMP, None, end_label))
+
+        if self.else_block:
+            compiler.add(Instruction(Opcode.ELSE, None, else_label))
+            self.else_block.eval(compiler)
+
+        compiler.add(Instruction(Opcode.ENDIF, None, end_label))
 
 
 class DefStatement(Node):
@@ -226,21 +262,7 @@ class WhenStatement(Node):
         self.cases = cases
 
     def eval(self, compiler):
-        compiler.case_token = self.identifier
-        compiler.add(Instruction(Opcode.WHEN))
-        marked = []
-
-        for case in self.cases:
-            compiler.add(Instruction(Opcode.LOAD_VAR, self.identifier, self.identifier.data))
-            case.eval(compiler)
-
-            marked.append(len(compiler.instructions))
-            compiler.add(Instruction(Opcode.JUMP))
-        compiler.add(Instruction(Opcode.END))
-
-        for mark in marked:
-            compiler.instructions[mark].value = "%s" % compiler.address
-        compiler.case_token = None
+        pass
 
 
 class DefaultCaseStatement(Node):
@@ -248,9 +270,7 @@ class DefaultCaseStatement(Node):
         self.statement = statement
 
     def eval(self, compiler):
-        compiler.add(Instruction(Opcode.DEFAULT_CASE, compiler.case_token, compiler.case_token.data))
-        compiler.address += 1
-        self.statement.eval(compiler)
+        pass
 
 
 class CaseStatement(Node):
@@ -260,10 +280,7 @@ class CaseStatement(Node):
         self.statement = statement
 
     def eval(self, compiler):
-        self.literal.eval(compiler)
-        compiler.add(Instruction(Opcode.CASE, compiler.case_token, compiler.case_token.data))
-        compiler.address += 2
-        self.statement.eval(compiler)
+        pass
 
 
 class Parser:
@@ -276,9 +293,10 @@ class Parser:
         current_tok = self.token
 
         if expecting is not None and current_tok.kind != expecting:
-            self.error("Expecting token type %s. Got %s instead." % (expecting.kind, current_tok.kind))
+            raise Exception("Expecting token type %s. Got %s instead." % (expecting.kind, current_tok.kind))
 
         self.token = self.lexer.next_token()
+
         if current_tok is None:
             current_tok = self.token
         return current_tok
@@ -295,10 +313,11 @@ class Parser:
     def parse_block_statement(self, endings):
         statements = []
         while not self.parse_token_matches(endings):
-            statements.append(self.parse_statement())
+            statement = self.parse_statement()
+            statements.append(statement)
         return statements
 
-    def parse_pub_def_statement(self):
+    def parse_def_statement(self, pub):
         self.parse_advance()
         name = self.parse_advance(TokenType.TOKEN_IDENTIFIER)
         self.parse_advance(TokenType.TOKEN_LEFT_PAREN)
@@ -311,22 +330,7 @@ class Parser:
 
         block = self.parse_block_statement([TokenType.TOKEN_END])
         self.parse_advance(TokenType.TOKEN_END)
-        return DefStatement(name, block, def_type, True)
-
-    def parse_def_statement(self):
-        self.parse_advance()
-        name = self.parse_advance(TokenType.TOKEN_IDENTIFIER)
-        self.parse_advance(TokenType.TOKEN_LEFT_PAREN)
-        # TODO: function arguments.
-        self.parse_advance(TokenType.TOKEN_RIGHT_PAREN)
-
-        def_type = None
-        if self.parse_accept(TokenType.TOKEN_COLON):
-            def_type = self.parse_advance()
-
-        block = self.parse_block_statement([TokenType.TOKEN_END])
-        self.parse_advance(TokenType.TOKEN_END)
-        return DefStatement(name, block, def_type, False)
+        return self.new_ast(DefStatement(name, block, def_type, pub))
 
     def parse_var_statement(self):
         var_type = self.parse_advance()
@@ -334,7 +338,7 @@ class Parser:
         expression = None
         if self.parse_accept(TokenType.TOKEN_EQ):
             expression = self.parse_expression()
-        return VarStatement(var_type, name, expression)
+        return self.new_ast(VarStatement(var_type, name, expression))
 
     def parse_if_statement(self):
         self.parse_advance()
@@ -346,21 +350,22 @@ class Parser:
         if self.parse_match(TokenType.TOKEN_ELSE):
             else_block = self.parse_statement()
         else:
-            self.parse_advance()
-
-        return IfStatement(condition, then_block, else_block)
+            self.parse_advance(TokenType.TOKEN_END)
+        return self.new_ast(IfStatement(condition, then_block, else_block))
 
     def parse_else_statement(self):
-        self.parse_advance()
-        return ElseStatement(self.parse_block_statement([TokenType.TOKEN_END]))
+        self.parse_advance(TokenType.TOKEN_ELSE)
+        block = self.parse_block_statement([TokenType.TOKEN_END])
+        self.parse_advance(TokenType.TOKEN_END)
+        return self.new_ast(ElseStatement(block))
 
     def parse_extern_statement(self):
-        self.parse_advance()
-        return ExternStatement(self.parse_advance(TokenType.TOKEN_IDENTIFIER))
+        self.parse_advance(TokenType.TOKEN_EXTERN)
+        return self.new_ast(ExternStatement(self.parse_advance(TokenType.TOKEN_IDENTIFIER)))
 
     def parse_include_statement(self):
         self.parse_advance()
-        return IncludeStatement(self.parse_advance(TokenType.TOKEN_STRING))
+        return self.new_ast(IncludeStatement(self.parse_advance(TokenType.TOKEN_STRING)))
 
     def parse_when_statement(self):
         self.parse_advance()
@@ -383,19 +388,20 @@ class Parser:
                 cases.append(CaseStatement(literal, statement))
 
         self.parse_advance()
-        return WhenStatement(identifier, cases)
+        return self.new_ast(WhenStatement(identifier, cases))
 
     def parse_return_statement(self):
         self.parse_advance()
         expression = None
         if not self.parse_match(TokenType.TOKEN_END):
             expression = self.parse_expression()
-        return ReturnStatement(expression)
+        return self.new_ast(ReturnStatement(expression))
 
     def parse_do_statement(self):
         self.parse_advance()
         block = self.parse_block_statement([TokenType.TOKEN_END])
-        return BlockStatement(block)
+        self.parse_advance(TokenType.TOKEN_END)
+        return self.new_ast(BlockStatement(block))
 
     def parse_statement(self):
         if not self.token or self.token.kind == TokenType.TOKEN_EOF:
@@ -403,11 +409,11 @@ class Parser:
         if self.parse_match(TokenType.TOKEN_EXTERN):
             return self.parse_extern_statement()
         elif self.parse_match(TokenType.TOKEN_DEF):
-            return self.parse_def_statement()
+            return self.parse_def_statement(False)
         elif self.parse_match(TokenType.TOKEN_PUB):
             self.parse_advance()
             if self.parse_match(TokenType.TOKEN_DEF):
-                return self.parse_pub_def_statement()
+                return self.parse_def_statement(True)
             raise Exception("Error. pub can only be used with a def token.")
         elif self.parse_match(TokenType.TOKEN_IDENTIFIER):
             return self.parse_identifier_statement()
@@ -428,7 +434,7 @@ class Parser:
         return None
 
     def parse_literal(self):
-        return LiteralExpression(self.parse_advance())
+        return self.new_ast(LiteralExpression(self.parse_advance()))
 
     def parse_args_expression(self):
         args = []
@@ -449,7 +455,7 @@ class Parser:
 
     def parse_proc_call_statement(self, name):
         args = self.parse_args_expression()
-        return CallProcStatement(name, args)
+        return self.new_ast(CallProcStatement(name, args))
 
     def parse_identifier_statement(self):
         name = self.parse_advance()
@@ -461,8 +467,8 @@ class Parser:
         name = self.parse_advance()
         if self.parse_match(TokenType.TOKEN_LEFT_PAREN):
             args = self.parse_args_expression()
-            return CallProcExpression(name, args)
-        return LiteralExpression(name)
+            return self.new_ast(CallProcExpression(name, args))
+        return self.new_ast(LiteralExpression(name))
 
     def parse_primary(self):
         if self.parse_match(TokenType.TOKEN_LEFT_PAREN):
@@ -480,7 +486,7 @@ class Parser:
         while self.parse_match(TokenType.TOKEN_NOT) or self.parse_match(TokenType.TOKEN_DASH):
             operator = self.parse_advance()
             right = self.parse_unary()
-            return UnaryExpression(right, operator)
+            return self.new_ast(UnaryExpression(right, operator))
         return self.parse_primary()
 
     def parse_factor(self):
@@ -488,7 +494,7 @@ class Parser:
         while self.parse_match(TokenType.TOKEN_SLASH) or self.parse_match(TokenType.TOKEN_STAR):
             operator = self.parse_advance()
             right = self.parse_unary()
-            exp = BinaryExpression(exp, right, operator)
+            exp = self.new_ast(BinaryExpression(exp, right, operator))
         return exp
 
     def parse_term(self):
@@ -496,15 +502,16 @@ class Parser:
         while self.parse_match(TokenType.TOKEN_DASH) or self.parse_match(TokenType.TOKEN_PLUS):
             operator = self.parse_advance()
             right = self.parse_factor()
-            exp = BinaryExpression(exp, right, operator)
+            exp = self.new_ast(BinaryExpression(exp, right, operator))
         return exp
 
     def parse_comparison(self):
         exp = self.parse_term()
-        while self.parse_match(TokenType.TOKEN_ISG) or self.parse_match(TokenType.TOKEN_ISGE) or self.parse_match(TokenType.TOKEN_ISL) or self.parse_match(TokenType.TOKEN_ISLE):
+        while self.parse_match(TokenType.TOKEN_ISG) or self.parse_match(TokenType.TOKEN_ISGE) or self.parse_match(
+                TokenType.TOKEN_ISL) or self.parse_match(TokenType.TOKEN_ISLE):
             operator = self.parse_advance()
             right = self.parse_term()
-            exp = CompareExpression(exp, right, operator)
+            exp = self.new_ast(CompareExpression(exp, right, operator))
         return exp
 
     def parse_equality(self):
@@ -512,7 +519,7 @@ class Parser:
         while self.parse_match(TokenType.TOKEN_ISNEQ) or self.parse_match(TokenType.TOKEN_ISEQ):
             operator = self.parse_advance()
             right = self.parse_comparison()
-            exp = CompareExpression(exp, right, operator)
+            exp = self.new_ast(CompareExpression(exp, right, operator))
         return exp
 
     def parse_and_expression(self):
@@ -521,7 +528,7 @@ class Parser:
         while self.parse_match(TokenType.TOKEN_AND):
             operator = self.parse_advance()
             right = self.parse_equality()
-            exp = LogicalExpression(exp, right, operator)
+            exp = self.new_ast(LogicalExpression(exp, right, operator))
         return exp
 
     def parse_or_expression(self):
@@ -530,7 +537,7 @@ class Parser:
         while self.parse_match(TokenType.TOKEN_OR):
             operator = self.parse_advance()
             right = self.parse_and_expression()
-            exp = LogicalExpression(exp, right, operator)
+            exp = self.new_ast(LogicalExpression(exp, right, operator))
         return exp
 
     def parse_ternary_if_expression(self):
@@ -539,10 +546,14 @@ class Parser:
         then_expression = self.parse_expression()
         self.parse_advance(TokenType.TOKEN_COLON)
         else_expression = self.parse_expression()
-        return TernaryExpression(condition, then_expression, else_expression)
+        return self.new_ast(TernaryExpression(condition, then_expression, else_expression))
 
     def parse_expression(self):
         if self.parse_match(TokenType.TOKEN_IF):
             self.parse_advance()
             return self.parse_ternary_if_expression()
         return self.parse_or_expression()
+
+    def new_ast(self, clazz):
+        # print("Node: %s" % clazz.__str__)
+        return clazz

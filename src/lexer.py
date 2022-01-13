@@ -78,6 +78,7 @@ class Lexer:
     def next_string(self):
         string = ""
         self.lex_advance()
+
         while self.head != '"':
             string += self.head
             self.lex_advance()
@@ -94,7 +95,7 @@ class Lexer:
             self.lex_advance()
 
         if decimals > 1:
-            error("A number cannot have more than 1 decimal point.")
+            raise Exception("A number cannot have more than 1 decimal point.")
         return Token(TokenType.TOKEN_DIGIT if decimals == 0 else TokenType.TOKEN_DECIMAL, numeral)
 
     def next_token(self):
