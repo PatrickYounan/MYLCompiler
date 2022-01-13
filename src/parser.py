@@ -158,7 +158,6 @@ class IfStatement(Node):
             compiler.add(Instruction(Opcode.JMP, None, else_label))
 
         compiler.add(Instruction(Opcode.IF, None, then_label))
-
         for statement in self.then_block:
             statement.eval(compiler)
 

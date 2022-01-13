@@ -118,8 +118,10 @@ class Compiler:
 
     # This function pops every registers for each bit size but chooses the one we require.
     def pop_register(self, required):
-        if not self.registers_32bit or not self.registers_64bit:
-            return "rax" if required == 64 else "eax"
+        if not self.registers_32bit and required == 32:
+            return "eax"
+        elif not self.registers_64bit and required == 64:
+            return "rax"
         bit32 = self.pop_32bit_arg_register()
         bit64 = self.pop_64bit_arg_register()
         return bit64 if required == 64 else bit32
@@ -133,6 +135,11 @@ class Compiler:
         if a == b:
             return
         self.code.append(" mov %s, %s\n" % (a, b))
+
+    def movzx(self, a, b):
+        if a == b:
+            return
+        self.code.append(" movzx %s, %s\n" % (a, b))
 
     def movss(self, a, b):
         if a == b:
@@ -161,13 +168,13 @@ class Compiler:
         if stack_value.kind == StackValueType.INT8_VAR:
             register = self.pop_register(32)
             self.mov("al", value)
-            self.code.append(" movzx %s, al\n" % register)
+            self.movzx(register, "al")
             return register
 
         elif stack_value.kind == StackValueType.INT16_VAR:
             register = self.pop_register(32)
             self.mov("ax", value)
-            self.code.append(" movzx %s, ax\n" % register)
+            self.movzx(register, "ax")
             return register
 
         elif stack_value.kind == StackValueType.FLOAT_VAR and register != "rax":
@@ -218,7 +225,11 @@ class Compiler:
         self.stack.append(StackValue(StackValueType.INT_CONST, str(int(a.value) + int(b.value))))
 
     def get_register_for_type(self, value):
-        if value.kind == StackValueType.INT32_VAR:
+        if value.kind == StackValueType.INT8_VAR:
+            return "al"
+        elif value.kind == StackValueType.INT16_VAR:
+            return "ax"
+        elif value.kind == StackValueType.INT32_VAR:
             return self.pop_register(32)
         elif value.kind == StackValueType.INT64_VAR:
             return self.pop_register(64)
@@ -338,6 +349,7 @@ class Compiler:
     def emit_cmp(self, a, b):
         register_a = self.get_register_for_type(a)
         register_b = self.get_register_for_type(b)
+
         self.mov(register_a, a.value)
         self.mov(register_b, b.value)
         self.code.append(" cmp %s, %s\n" % (register_a, register_b))

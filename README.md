@@ -7,7 +7,7 @@ An assembly compiler written with the Python Language.
   - [ ] Float: f64
 - [x] Function calls
 - [x] Arithmetic (+, -, *, /)
-- [x] When case matching
+- [ ] When case matching
 - [ ] Global data storage (variables)
 - [ ] Arrays
 - [ ] Condition checking (if, else, else if)
